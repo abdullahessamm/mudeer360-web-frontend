@@ -1,0 +1,31 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Primary color from UTech design (#008CFF) */
+:root {
+  --p-primary-color: #008cff;
+  --p-primary-hover-color: #0077e6;
+  --p-primary-active-color: #0066cc;
+}
+
+/* Low stock row warning animation */
+@keyframes low-stock-pulse {
+  0%,
+  100% {
+    background-color: rgba(245, 158, 11, 0.12);
+  }
+  50% {
+    background-color: rgba(245, 158, 11, 0.22);
+  }
+}
+
+.product-row-low-stock {
+  animation: low-stock-pulse 2s ease-in-out infinite;
+}
+
+.product-row-low-stock td {
+  border-inline-start: 3px solid #f59e0b;
+}
