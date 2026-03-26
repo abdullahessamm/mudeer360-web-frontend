@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardStore } from '@/stores/dashboard'
@@ -11,18 +11,89 @@ const dashboardStore = useDashboardStore()
 const sidebarVisible = ref(false)
 const isDesktop = ref(true)
 
-const menuItems = [
-  { label: 'لوحة التحكم', to: '/dashboard', icon: 'pi pi-home' },
-  { label: 'المنتجات', to: '/products', icon: 'pi pi-box' },
-  { label: 'فئات المنتجات', to: '/product-categories', icon: 'pi pi-tags' },
-  { label: 'الموردين', to: '/suppliers', icon: 'pi pi-users' },
-  { label: 'العملاء', to: '/customers', icon: 'pi pi-user-plus' },
-  { label: 'فواتير البيع', to: '/sales', icon: 'pi pi-shopping-cart' },
-  { label: 'فواتير الشراء', to: '/purchases', icon: 'pi pi-truck' },
-  { label: 'المعاملات المالية', to: '/financial-transactions', icon: 'pi pi-wallet' },
+const mainMenuTop = [{ label: 'لوحة التحكم', to: '/dashboard', icon: 'pi pi-home' }]
+
+const mainMenuBottom = [
   { label: 'الموظفين', to: '/employees', icon: 'pi pi-id-card' },
   { label: 'الإعدادات', to: '/settings', icon: 'pi pi-cog' },
 ]
+
+const stockMenuItems = [
+  { label: 'فئات المنتجات', to: '/product-categories', icon: 'pi pi-tags' },
+  { label: 'المنتجات', to: '/products', icon: 'pi pi-box' },
+]
+
+const purchasingMenuItems = [
+  { label: 'الموردين', to: '/suppliers', icon: 'pi pi-users' },
+  { label: 'فواتير الشراء', to: '/purchases', icon: 'pi pi-truck' },
+]
+
+const salesMenuItems = [
+  { label: 'العملاء', to: '/customers', icon: 'pi pi-user-plus' },
+  { label: 'فواتير البيع', to: '/sales', icon: 'pi pi-shopping-cart' },
+]
+
+const stockExpanded = ref(false)
+const purchasingExpanded = ref(false)
+const salesExpanded = ref(false)
+
+const isStockSectionActive = computed(
+  () =>
+    router.currentRoute.value.path.startsWith('/product-categories') ||
+    router.currentRoute.value.path.startsWith('/products'),
+)
+
+const isPurchasingSectionActive = computed(
+  () =>
+    router.currentRoute.value.path.startsWith('/suppliers') ||
+    router.currentRoute.value.path.startsWith('/purchases'),
+)
+
+const isSalesSectionActive = computed(
+  () =>
+    router.currentRoute.value.path.startsWith('/customers') ||
+    router.currentRoute.value.path.startsWith('/sales'),
+)
+
+function toggleStockGroup() {
+  stockExpanded.value = !stockExpanded.value
+}
+
+function togglePurchasingGroup() {
+  purchasingExpanded.value = !purchasingExpanded.value
+}
+
+function toggleSalesGroup() {
+  salesExpanded.value = !salesExpanded.value
+}
+
+const financialMenuItems = [
+  { label: 'إعدادات الحسابات', to: '/financial/accounts', icon: 'pi pi-building-columns' },
+  { label: 'الإيرادات', to: '/financial/revenues', icon: 'pi pi-arrow-down-left' },
+  { label: 'المصروفات', to: '/financial/expenses', icon: 'pi pi-arrow-up-right' },
+  { label: 'سجل المعاملات', to: '/financial/transactions', icon: 'pi pi-list' },
+]
+
+const financialExpanded = ref(false)
+
+watch(
+  () => router.currentRoute.value.path,
+  (p) => {
+    if (p.startsWith('/product-categories') || p.startsWith('/products')) stockExpanded.value = true
+    if (p.startsWith('/suppliers') || p.startsWith('/purchases')) purchasingExpanded.value = true
+    if (p.startsWith('/customers') || p.startsWith('/sales')) salesExpanded.value = true
+    if (p.startsWith('/financial')) financialExpanded.value = true
+  },
+  { immediate: true },
+)
+
+const isFinancialSectionActive = computed(() =>
+  router.currentRoute.value.path.startsWith('/financial'),
+)
+
+function toggleFinancialGroup() {
+  financialExpanded.value = !financialExpanded.value
+}
 
 const userDisplayName = computed(
   () => authStore.user?.name ?? authStore.user?.username ?? 'المستخدم',
@@ -83,9 +154,7 @@ onUnmounted(() => {
         </div>
         <div class="flex flex-column">
           <span class="text-md font-bold p-0 m-0">مدير 360</span>
-          <span class="text-sm text-gray-500 p-0" style="margin-top: -0.5rem"
-            >محمود رأفت لمواد البناء</span
-          >
+          <span class="text-sm text-gray-500 p-0">محمود رأفت لمواد البناء</span>
         </div>
       </div>
 
@@ -93,7 +162,138 @@ onUnmounted(() => {
         <span class="sidebar-section-title">القائمة الرئيسية</span>
         <nav class="sidebar-nav">
           <button
-            v-for="item in menuItems"
+            v-for="item in mainMenuTop"
+            :key="item.to"
+            type="button"
+            :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+            @click="router.push(item.to)"
+          >
+            <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+            <span>{{ item.label }}</span>
+          </button>
+
+          <div class="sidebar-group">
+            <button
+              type="button"
+              class="sidebar-group-header"
+              :class="{ 'sidebar-item-active': isStockSectionActive }"
+              @click="toggleStockGroup"
+            >
+              <i class="pi pi-box sidebar-icon"></i>
+              <span class="flex-1 text-right">المخزون</span>
+              <i
+                :class="[
+                  'pi sidebar-chevron',
+                  stockExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                ]"
+              ></i>
+            </button>
+            <div v-show="stockExpanded" class="sidebar-subnav">
+              <button
+                v-for="item in stockMenuItems"
+                :key="item.to"
+                type="button"
+                :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+                @click="router.push(item.to)"
+              >
+                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-group">
+            <button
+              type="button"
+              class="sidebar-group-header"
+              :class="{ 'sidebar-item-active': isPurchasingSectionActive }"
+              @click="togglePurchasingGroup"
+            >
+              <i class="pi pi-shopping-bag sidebar-icon"></i>
+              <span class="flex-1 text-right">المشتريات</span>
+              <i
+                :class="[
+                  'pi sidebar-chevron',
+                  purchasingExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                ]"
+              ></i>
+            </button>
+            <div v-show="purchasingExpanded" class="sidebar-subnav">
+              <button
+                v-for="item in purchasingMenuItems"
+                :key="item.to"
+                type="button"
+                :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+                @click="router.push(item.to)"
+              >
+                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-group">
+            <button
+              type="button"
+              class="sidebar-group-header"
+              :class="{ 'sidebar-item-active': isSalesSectionActive }"
+              @click="toggleSalesGroup"
+            >
+              <i class="pi pi-chart-line sidebar-icon"></i>
+              <span class="flex-1 text-right">المبيعات</span>
+              <i
+                :class="[
+                  'pi sidebar-chevron',
+                  salesExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                ]"
+              ></i>
+            </button>
+            <div v-show="salesExpanded" class="sidebar-subnav">
+              <button
+                v-for="item in salesMenuItems"
+                :key="item.to"
+                type="button"
+                :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+                @click="router.push(item.to)"
+              >
+                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-group">
+            <button
+              type="button"
+              class="sidebar-group-header"
+              :class="{ 'sidebar-item-active': isFinancialSectionActive }"
+              @click="toggleFinancialGroup"
+            >
+              <i class="pi pi-wallet sidebar-icon"></i>
+              <span class="flex-1 text-right">المالية</span>
+              <i
+                :class="[
+                  'pi sidebar-chevron',
+                  financialExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                ]"
+              ></i>
+            </button>
+            <div v-show="financialExpanded" class="sidebar-subnav">
+              <button
+                v-for="item in financialMenuItems"
+                :key="item.to"
+                type="button"
+                :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+                @click="router.push(item.to)"
+              >
+                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <button
+            v-for="item in mainMenuBottom"
             :key="item.to"
             type="button"
             :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
@@ -130,9 +330,7 @@ onUnmounted(() => {
           </div>
           <div class="flex flex-column">
             <span class="text-md font-bold p-0 m-0">مدير 360</span>
-            <span class="text-sm text-gray-500 p-0" style="margin-top: -0.5rem"
-              >محمود رأفت لمواد البناء</span
-            >
+            <span class="text-sm text-gray-500 p-0">محمود رأفت لمواد البناء</span>
           </div>
         </div>
         <button type="button" class="sidebar-close" aria-label="إغلاق" @click="closeSidebar">
@@ -143,11 +341,172 @@ onUnmounted(() => {
         <span class="sidebar-section-title">القائمة الرئيسية</span>
         <nav class="sidebar-nav">
           <button
-            v-for="item in menuItems"
+            v-for="item in mainMenuTop"
             :key="item.to"
             type="button"
             :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
-            @click="router.push(item.to); closeSidebar()"
+            @click="
+              () => {
+                router.push(item.to)
+                closeSidebar()
+              }
+            "
+          >
+            <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+            <span>{{ item.label }}</span>
+          </button>
+
+          <div class="sidebar-group">
+            <button
+              type="button"
+              class="sidebar-group-header"
+              :class="{ 'sidebar-item-active': isStockSectionActive }"
+              @click="toggleStockGroup"
+            >
+              <i class="pi pi-box sidebar-icon"></i>
+              <span class="flex-1 text-right">المخزون</span>
+              <i
+                :class="[
+                  'pi sidebar-chevron',
+                  stockExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                ]"
+              ></i>
+            </button>
+            <div v-show="stockExpanded" class="sidebar-subnav">
+              <button
+                v-for="item in stockMenuItems"
+                :key="item.to"
+                type="button"
+                :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+                @click="
+                  () => {
+                    router.push(item.to)
+                    closeSidebar()
+                  }
+                "
+              >
+                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-group">
+            <button
+              type="button"
+              class="sidebar-group-header"
+              :class="{ 'sidebar-item-active': isPurchasingSectionActive }"
+              @click="togglePurchasingGroup"
+            >
+              <i class="pi pi-shopping-bag sidebar-icon"></i>
+              <span class="flex-1 text-right">المشتريات</span>
+              <i
+                :class="[
+                  'pi sidebar-chevron',
+                  purchasingExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                ]"
+              ></i>
+            </button>
+            <div v-show="purchasingExpanded" class="sidebar-subnav">
+              <button
+                v-for="item in purchasingMenuItems"
+                :key="item.to"
+                type="button"
+                :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+                @click="
+                  () => {
+                    router.push(item.to)
+                    closeSidebar()
+                  }
+                "
+              >
+                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-group">
+            <button
+              type="button"
+              class="sidebar-group-header"
+              :class="{ 'sidebar-item-active': isSalesSectionActive }"
+              @click="toggleSalesGroup"
+            >
+              <i class="pi pi-chart-line sidebar-icon"></i>
+              <span class="flex-1 text-right">المبيعات</span>
+              <i
+                :class="[
+                  'pi sidebar-chevron',
+                  salesExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                ]"
+              ></i>
+            </button>
+            <div v-show="salesExpanded" class="sidebar-subnav">
+              <button
+                v-for="item in salesMenuItems"
+                :key="item.to"
+                type="button"
+                :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+                @click="
+                  () => {
+                    router.push(item.to)
+                    closeSidebar()
+                  }
+                "
+              >
+                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-group">
+            <button
+              type="button"
+              class="sidebar-group-header"
+              :class="{ 'sidebar-item-active': isFinancialSectionActive }"
+              @click="toggleFinancialGroup"
+            >
+              <i class="pi pi-wallet sidebar-icon"></i>
+              <span class="flex-1 text-right">المالية</span>
+              <i
+                :class="[
+                  'pi sidebar-chevron',
+                  financialExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                ]"
+              ></i>
+            </button>
+            <div v-show="financialExpanded" class="sidebar-subnav">
+              <button
+                v-for="item in financialMenuItems"
+                :key="item.to"
+                type="button"
+                :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+                @click="
+                  () => {
+                    router.push(item.to)
+                    closeSidebar()
+                  }
+                "
+              >
+                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <button
+            v-for="item in mainMenuBottom"
+            :key="item.to"
+            type="button"
+            :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+            @click="
+              () => {
+                router.push(item.to)
+                closeSidebar()
+              }
+            "
           >
             <i :class="['pi', item.icon, 'sidebar-icon']"></i>
             <span>{{ item.label }}</span>
@@ -214,7 +573,8 @@ onUnmounted(() => {
       </main>
       <footer class="main-footer">
         <span class="footer-text"
-          >© {{ new Date().getFullYear() }} مدير 360 - نظام إدارة الأعمال · Powered by SwiftCare</span
+          >© {{ new Date().getFullYear() }} مدير 360 - نظام إدارة الأعمال · Powered by
+          SwiftCare</span
         >
       </footer>
     </div>
@@ -341,6 +701,66 @@ onUnmounted(() => {
 
 .sidebar-item-active .sidebar-icon {
   color: #008cff;
+}
+
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.sidebar-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.625rem 1rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: #4a5568;
+  font-size: 0.9rem;
+  text-align: right;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sidebar-group-header:hover {
+  background: #edf2f7;
+}
+
+.sidebar-group-header.sidebar-item-active {
+  background: white;
+  color: #2d3748;
+  font-weight: 600;
+}
+
+.sidebar-group-header.sidebar-item-active .sidebar-icon {
+  color: #008cff;
+}
+
+.sidebar-chevron {
+  font-size: 0.75rem;
+  color: #a0aec0;
+  flex-shrink: 0;
+}
+
+.sidebar-subnav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin-right: 0.35rem;
+  padding-right: 0.5rem;
+  border-right: 2px solid #e2e8f0;
+}
+
+.sidebar-subitem {
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem !important;
+}
+
+.sidebar-subitem .sidebar-icon {
+  font-size: 1rem;
 }
 
 /* Mobile sidebar */

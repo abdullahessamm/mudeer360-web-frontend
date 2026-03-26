@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient } from '@/api/axios'
 import { unwrapPayload, parsePaginatedResponse, getErrorMessage } from '@/api/utils'
-import type { Product } from '@/types'
+import type { Product, ProductStockMovement } from '@/types'
 import type { PaginatedPayload } from '@/types'
 
 export const useProductsStore = defineStore('products', () => {
@@ -63,7 +63,7 @@ export const useProductsStore = defineStore('products', () => {
     loading.value = true
     error.value = null
     try {
-      const { data } = await apiClient.post('/api/products', {
+      const payload: Record<string, unknown> = {
         name: product.name,
         product_category_id: product.product_category_id || undefined,
         unit: product.unit ?? 'قطعة',
@@ -72,7 +72,11 @@ export const useProductsStore = defineStore('products', () => {
         quantity: product.quantity,
         min_quantity: product.min_quantity,
         description: product.description || undefined,
-      })
+      }
+      const p = product as { auto_generate_code?: boolean; product_code?: string }
+      if (p.auto_generate_code) payload.auto_generate_code = true
+      else if (p.product_code != null) payload.product_code = p.product_code
+      const { data } = await apiClient.post('/api/products', payload)
       const created = unwrapPayload<Product>(data)
       items.value = [created, ...items.value]
       return created
@@ -88,7 +92,7 @@ export const useProductsStore = defineStore('products', () => {
     loading.value = true
     error.value = null
     try {
-      const { data } = await apiClient.put(`/api/products/${id}`, {
+      const payload: Record<string, unknown> = {
         name: product.name,
         product_category_id: product.product_category_id || undefined,
         unit: product.unit,
@@ -97,7 +101,11 @@ export const useProductsStore = defineStore('products', () => {
         quantity: product.quantity,
         min_quantity: product.min_quantity,
         description: product.description || undefined,
-      })
+      }
+      const p = product as { auto_generate_code?: boolean; product_code?: string }
+      if (p.auto_generate_code) payload.auto_generate_code = true
+      else if (p.product_code !== undefined) payload.product_code = p.product_code
+      const { data } = await apiClient.put(`/api/products/${id}`, payload)
       const updated = unwrapPayload<Product>(data)
       const idx = items.value.findIndex((p) => p.id === id)
       if (idx !== -1) items.value[idx] = updated
@@ -130,6 +138,19 @@ export const useProductsStore = defineStore('products', () => {
     error.value = null
   }
 
+  async function fetchStockMovements(
+    productId: number,
+    page = 1,
+    perPage = 15,
+    filters?: { direction?: 'in' | 'out'; source?: string },
+  ) {
+    const params: Record<string, string | number> = { page, per_page: perPage }
+    if (filters?.direction) params.direction = filters.direction
+    if (filters?.source) params.source = filters.source
+    const { data } = await apiClient.get(`/api/products/${productId}/stock-movements`, { params })
+    return parsePaginatedResponse<ProductStockMovement>(data)
+  }
+
   return {
     items,
     allProducts,
@@ -147,5 +168,6 @@ export const useProductsStore = defineStore('products', () => {
     remove,
     byId,
     clearError,
+    fetchStockMovements,
   }
 })

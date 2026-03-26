@@ -243,7 +243,7 @@ onMounted(() => {
                 class="low-stock-item flex justify-content-between align-items-center py-2 border-bottom-1 surface-border"
                 @click="router.push('/products')"
               >
-                <span class="font-medium">{{ p.name }}</span>
+                <span class="font-medium">{{ p.product_code ? `${p.product_code} - ` : '' }}{{ p.name }}</span>
                 <span class="text-color-secondary">
                   {{ p.quantity }} / {{ p.min_quantity }} {{ p.unit }}</span
                 >

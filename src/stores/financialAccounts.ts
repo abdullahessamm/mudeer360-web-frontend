@@ -30,6 +30,59 @@ export const useFinancialAccountsStore = defineStore('financialAccounts', () => 
     }
   }
 
+  async function create(body: { name: string; type?: string | null }) {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.post('/api/financial-accounts', {
+        name: body.name.trim(),
+        ...(body.type != null && body.type !== '' ? { type: body.type } : {}),
+      })
+      const created = unwrapPayload<FinancialAccount>(data)
+      items.value = [...items.value, created]
+      return created
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل إضافة الحساب')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function update(id: number, body: { name?: string; type?: string | null }) {
+    loading.value = true
+    error.value = null
+    try {
+      const payload: Record<string, unknown> = {}
+      if (body.name !== undefined) payload.name = body.name.trim()
+      if (body.type !== undefined) payload.type = body.type || null
+      const { data } = await apiClient.put(`/api/financial-accounts/${id}`, payload)
+      const updated = unwrapPayload<FinancialAccount>(data)
+      const idx = items.value.findIndex((a) => a.id === id)
+      if (idx !== -1) items.value[idx] = updated
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل تحديث الحساب')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function remove(id: number) {
+    loading.value = true
+    error.value = null
+    try {
+      await apiClient.delete(`/api/financial-accounts/${id}`)
+      items.value = items.value.filter((a) => a.id !== id)
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل حذف الحساب')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearError() {
     error.value = null
   }
@@ -39,6 +92,9 @@ export const useFinancialAccountsStore = defineStore('financialAccounts', () => 
     loading,
     error,
     fetchAll,
+    create,
+    update,
+    remove,
     clearError,
   }
 })

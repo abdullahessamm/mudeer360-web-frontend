@@ -8,6 +8,7 @@ const props = defineProps<{
   modelValue?: Partial<Product> | null
   categoryOptions: { label: string; value: number }[]
   loading?: boolean
+  isEdit?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -16,6 +17,8 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive({
+  product_code: props.modelValue?.product_code ?? '',
+  auto_generate_code: (props.modelValue as { auto_generate_code?: boolean } | undefined)?.auto_generate_code ?? true,
   name: props.modelValue?.name ?? '',
   product_category_id: props.modelValue?.product_category_id ?? (null as number | null),
   unit: props.modelValue?.unit ?? 'قطعة',
@@ -30,6 +33,8 @@ watch(
   () => props.modelValue,
   (v) => {
     if (v) {
+      form.product_code = v.product_code ?? ''
+      form.auto_generate_code = props.isEdit ? false : true
       form.name = v.name ?? ''
       form.product_category_id = v.product_category_id ?? null
       form.unit = v.unit ?? 'قطعة'
@@ -51,7 +56,7 @@ const invalid = computed(() => v$.value.$invalid)
 async function onSubmit() {
   v$.value.$touch()
   if (v$.value.$invalid) return
-  emit('submit', {
+  const payload: Partial<Product> & { auto_generate_code?: boolean } = {
     name: form.name.trim(),
     product_category_id: form.product_category_id || undefined,
     unit: form.unit.trim() || 'قطعة',
@@ -60,7 +65,13 @@ async function onSubmit() {
     quantity: form.quantity,
     min_quantity: form.min_quantity,
     description: form.description?.trim() || undefined,
-  })
+  }
+  if (form.auto_generate_code) {
+    payload.auto_generate_code = true
+  } else {
+    payload.product_code = form.product_code?.trim() ?? ''
+  }
+  emit('submit', payload)
 }
 
 function onCancel() {
@@ -81,6 +92,32 @@ function errorMsg(field: keyof typeof form) {
 
 <template>
   <form @submit.prevent="onSubmit" class="flex flex-column gap-3">
+    <div class="field">
+      <div class="flex align-items-center gap-2 mb-2">
+        <Checkbox
+          v-model="form.auto_generate_code"
+          input-id="p-auto-code"
+          :binary="true"
+        />
+        <label for="p-auto-code" class="cursor-pointer text-sm">
+          {{ props.isEdit ? 'توليد كود جديد' : 'توليد كود تلقائي' }}
+        </label>
+      </div>
+      <InputText
+        v-if="!form.auto_generate_code"
+        id="p-code"
+        v-model="form.product_code"
+        class="w-full mt-1"
+        :class="{ 'p-invalid': v$.product_code?.$error }"
+        :placeholder="props.isEdit ? 'الكود الحالي أو اتركه فارغاً للتوليد' : 'كود المنتج (اختياري)'"
+        maxlength="50"
+        @blur="v$.product_code?.$touch()"
+      />
+      <small v-else class="text-color-secondary text-sm">
+        {{ props.isEdit ? 'سيتم توليد كود جديد عند الحفظ' : 'سيتم توليد كود تلقائي (مثل PRD-000001)' }}
+      </small>
+      <small v-if="v$.product_code?.$error" class="p-error">{{ errorMsg('product_code') }}</small>
+    </div>
     <div class="field">
       <label for="p-name">الاسم <span class="text-red-500">*</span></label>
       <InputText

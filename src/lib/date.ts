@@ -6,6 +6,15 @@ export function formatDateLocal(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+/** Date part only (YYYY-MM-DD) from API ISO/datetime strings. */
+export function formatDateOnly(isoOrDate: string | undefined | null): string {
+  if (!isoOrDate) return ''
+  const d = new Date(isoOrDate)
+  if (!Number.isNaN(d.getTime())) return formatDateLocal(d)
+  const part = isoOrDate.split('T')[0]
+  return part ?? isoOrDate
+}
+
 /** Get [start, end] of current month as Date objects. */
 export function getCurrentMonthRange(): [Date, Date] {
   const now = new Date()

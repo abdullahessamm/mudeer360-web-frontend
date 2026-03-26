@@ -109,19 +109,33 @@ function onPageChange(page: number) {
   store.fetchPage(page, store.perPage, dashboardStore.searchQuery)
 }
 
+function formatBalance(n: number | undefined) {
+  return (n ?? 0).toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+}
+
 onMounted(() => {
   store.fetchPage(1, store.perPage, dashboardStore.searchQuery)
 })
 </script>
 
 <template>
-  <div dir="rtl">
-    <div class="flex justify-content-end mb-4">
+  <div dir="rtl" class="relative">
+    <div class="flex justify-content-between align-items-center mb-4">
+      <Tag
+        v-if="store.loading && store.items.length > 0"
+        severity="warn"
+        value="جارٍ التحديث"
+        icon="pi pi-spin pi-spinner"
+      />
+      <span v-else></span>
       <Button label="إضافة عميل" icon="pi pi-plus" @click="openCreate" />
     </div>
     <Card>
       <template #content>
-        <div v-if="store.loading" class="flex justify-content-center align-items-center py-8">
+        <div
+          v-if="store.loading && store.items.length === 0"
+          class="flex justify-content-center align-items-center py-8"
+        >
           <i class="pi pi-spin pi-spinner text-4xl text-color-secondary"></i>
         </div>
         <div
@@ -142,6 +156,9 @@ onMounted(() => {
           class="p-datatable-sm"
         >
           <Column field="name" header="الاسم" sortable />
+          <Column header="الرصيد" style="width: 8rem">
+            <template #body="{ data }">{{ formatBalance(data.balance) }}</template>
+          </Column>
           <Column field="phone" header="الهاتف">
             <template #body="{ data }">{{ data.phone ?? '—' }}</template>
           </Column>

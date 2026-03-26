@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient } from '@/api/axios'
 import { unwrapPayload, parsePaginatedResponse, getErrorMessage } from '@/api/utils'
-import type { Customer, CustomerWithInvoices } from '@/types'
+import type { Customer, CustomerBalanceTransaction, CustomerWithInvoices } from '@/types'
 import type { PaginatedPayload } from '@/types'
 
 export const useCustomersStore = defineStore('customers', () => {
@@ -37,9 +37,17 @@ export const useCustomersStore = defineStore('customers', () => {
   }
 
   /** Fetch single customer with sale invoices (GET /api/customers/{id}) */
-  async function fetchById(id: number): Promise<CustomerWithInvoices | null> {
+  async function fetchById(
+    id: number,
+    filters?: { date_from?: string; date_to?: string }
+  ): Promise<CustomerWithInvoices | null> {
     try {
-      const { data } = await apiClient.get(`/api/customers/${id}`)
+      const params: Record<string, string> = {}
+      if (filters?.date_from) params.date_from = filters.date_from
+      if (filters?.date_to) params.date_to = filters.date_to
+      const { data } = await apiClient.get(`/api/customers/${id}`, {
+        params: Object.keys(params).length > 0 ? params : undefined,
+      })
       let payload = data as CustomerWithInvoices | { payload?: CustomerWithInvoices; data?: CustomerWithInvoices }
       if (payload && typeof payload === 'object' && 'payload' in payload && payload.payload) {
         payload = payload.payload
@@ -144,6 +152,72 @@ export const useCustomersStore = defineStore('customers', () => {
     }
   }
 
+  async function chargeBalance(
+    id: number,
+    payload: {
+      amount: number
+      date: string
+      description?: string
+      financial_account_id?: number
+    },
+  ): Promise<Customer> {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.post(`/api/customers/${id}/balance-charge`, payload)
+      const updated = unwrapPayload<Customer>(data)
+      const idx = items.value.findIndex((c) => c.id === id)
+      if (idx !== -1) items.value[idx] = updated
+      const ai = allCustomers.value.findIndex((c) => c.id === id)
+      if (ai !== -1) allCustomers.value[ai] = updated
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل شحن الرصيد')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function withdrawBalance(
+    id: number,
+    payload: {
+      amount: number
+      date: string
+      description?: string
+      financial_account_id?: number
+    },
+  ): Promise<Customer> {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.post(`/api/customers/${id}/balance-withdraw`, payload)
+      const updated = unwrapPayload<Customer>(data)
+      const idx = items.value.findIndex((c) => c.id === id)
+      if (idx !== -1) items.value[idx] = updated
+      const ai = allCustomers.value.findIndex((c) => c.id === id)
+      if (ai !== -1) allCustomers.value[ai] = updated
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل سحب الرصيد')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchBalanceTransactions(
+    id: number,
+    page = 1,
+    perPage = 15,
+    typeFilter?: string,
+  ): Promise<PaginatedPayload<CustomerBalanceTransaction>> {
+    const params: Record<string, string | number> = { page, per_page: perPage }
+    if (typeFilter) params.type = typeFilter
+    const { data } = await apiClient.get(`/api/customers/${id}/balance-transactions`, { params })
+    return parsePaginatedResponse<CustomerBalanceTransaction>(data)
+  }
+
   function clearError() {
     error.value = null
   }
@@ -165,6 +239,9 @@ export const useCustomersStore = defineStore('customers', () => {
     create,
     update,
     remove,
+    chargeBalance,
+    withdrawBalance,
+    fetchBalanceTransactions,
     clearError,
   }
 })

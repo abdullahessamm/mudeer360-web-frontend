@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { formatDateLocal, getCurrentMonthRange } from '@/lib/date'
+import { getDispenseStats, DISPENSE_STATUS_LABELS, DISPENSE_STATUS_SEVERITY } from '@/lib/dispense'
 import { useConfirm } from 'primevue/useconfirm'
 import { showError, showSuccess } from '@/composables/useToast'
 import { useSalesStore } from '@/stores/sales'
@@ -9,8 +10,7 @@ import { useProductsStore } from '@/stores/products'
 import { useFinancialAccountsStore } from '@/stores/financialAccounts'
 import SaleInvoiceForm from '@/components/forms/SaleInvoiceForm.vue'
 import PaymentForm from '@/components/forms/PaymentForm.vue'
-import type { SaleInvoice, SaleInvoiceCreatePayload, PaymentPayload } from '@/types'
-import type { FinancialTransaction } from '@/types'
+import type { SaleInvoice, SaleInvoiceCreatePayload, PaymentPayload, InvoicePaymentLine } from '@/types'
 
 const confirm = useConfirm()
 const store = useSalesStore()
@@ -41,10 +41,12 @@ const editingInvoiceId = ref<number | null>(null)
 const formModel = ref<Partial<SaleInvoice> | null>(null)
 
 const detailDialogVisible = ref(false)
+const detailOpeningInvoiceNumber = ref<string | null>(null)
 const paymentDialogVisible = ref(false)
 const isEditPayment = ref(false)
 const editingPaymentId = ref<number | null>(null)
 const paymentFormModel = ref<Partial<PaymentPayload> | null>(null)
+const dispensingItemId = ref<number | null>(null)
 
 const customerOptions = computed(() => [
   { label: '— الكل —', value: null },
@@ -53,7 +55,7 @@ const customerOptions = computed(() => [
 
 const productOptions = computed(() =>
   productsStore.allProducts.map((p) => ({
-    label: p.name,
+    label: p.product_code ? `${p.product_code} - ${p.name}` : p.name,
     value: p.id,
     sale_price: p.sale_price,
     quantity: p.quantity,
@@ -67,12 +69,16 @@ const accountOptions = computed(() =>
 const formCustomers = computed(() => customersStore.allCustomers)
 
 const statusLabel = (status: string) =>
-  ({ paid: 'مدفوع', partial: 'مدفوع جزئياً', unpaid: 'غير مدفوع' }[status] ?? status)
+  ({ paid: 'مدفوع', partial: 'مدفوع جزئياً', unpaid: 'غير مدفوع' })[status] ?? status
 
-const typeLabel = (type: string) => ({ cash: 'نقدي', credit: 'آجل' }[type] ?? type)
+const typeLabel = (type: string) => ({ cash: 'نقدي', credit: 'آجل' })[type] ?? type
 
 const statusSeverity = (status: string) =>
-  ({ paid: 'success', partial: 'warn', unpaid: 'danger' }[status] ?? 'secondary')
+  ({ paid: 'success', partial: 'warn', unpaid: 'danger' })[status] ?? 'secondary'
+
+function formatAmount(n: number) {
+  return n.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+}
 
 const remainingAmount = computed(() => {
   const inv = store.currentInvoice
@@ -80,23 +86,32 @@ const remainingAmount = computed(() => {
   return Math.max(0, inv.total_amount - inv.paid_amount)
 })
 
-const formTitle = computed(() =>
-  isEditInvoice.value ? 'تعديل الفاتورة' : 'إضافة فاتورة بيع',
-)
+const undispensedCount = computed(() => {
+  const items = store.currentInvoice?.items ?? []
+  return items.filter((i) => !i.is_dispensed).length
+})
 
-const paymentFormTitle = computed(() =>
-  isEditPayment.value ? 'تعديل الدفعة' : 'إضافة دفعة',
-)
+const hasUndispensedItems = computed(() => undispensedCount.value > 0)
+
+const dispensedCount = computed(() => {
+  const items = store.currentInvoice?.items ?? []
+  return items.filter((i) => i.is_dispensed).length
+})
+const hasDispensedItems = computed(() => dispensedCount.value > 0)
+
+const formTitle = computed(() => (isEditInvoice.value ? 'تعديل الفاتورة' : 'إضافة فاتورة بيع'))
+
+const paymentFormTitle = computed(() => (isEditPayment.value ? 'تعديل الدفعة' : 'إضافة دفعة'))
 
 function toYMD(d: Date) {
   return formatDateLocal(d)
 }
 
-function applyFilters() {
+function applyFilters(page = 1) {
   const [date_from, date_to] = filters.value.dateRange
     ? [filters.value.dateRange[0], filters.value.dateRange[1]]
     : [undefined, undefined]
-  store.fetchPage(1, store.perPage, {
+  store.fetchPage(page, store.perPage, {
     customer_id: filters.value.customer_id || undefined,
     status: filters.value.status || undefined,
     type: filters.value.type || undefined,
@@ -154,9 +169,11 @@ function onInvoiceFormCancel() {
 }
 
 function openDetail(row: SaleInvoice, openPaymentAfter = false) {
+  detailDialogVisible.value = true
+  detailOpeningInvoiceNumber.value = row.invoice_number ?? null
+  store.clearCurrentInvoice()
   store.fetchById(row.id).then(() => {
     store.fetchPayments(row.id)
-    detailDialogVisible.value = true
     if (openPaymentAfter) {
       openAddPayment()
     }
@@ -165,6 +182,7 @@ function openDetail(row: SaleInvoice, openPaymentAfter = false) {
 
 function closeDetail() {
   detailDialogVisible.value = false
+  detailOpeningInvoiceNumber.value = null
   store.clearCurrentInvoice()
 }
 
@@ -174,6 +192,7 @@ function openAddPayment() {
   editingPaymentId.value = null
   paymentFormModel.value = {
     amount: remainingAmount.value,
+    balance_amount: 0,
     date: formatDateLocal(new Date()),
     financial_account_id: accountOptions.value[0]?.value ?? 0,
     description: '',
@@ -181,7 +200,8 @@ function openAddPayment() {
   paymentDialogVisible.value = true
 }
 
-function openEditPayment(payment: FinancialTransaction) {
+function openEditPayment(payment: InvoicePaymentLine) {
+  if (payment.payment_type !== 'cash') return
   isEditPayment.value = true
   editingPaymentId.value = payment.id
   paymentFormModel.value = {
@@ -206,6 +226,7 @@ async function onPaymentFormSubmit(payload: PaymentPayload) {
       await store.fetchPayments(store.currentInvoice.id)
     }
     paymentDialogVisible.value = false
+    await applyFilters(store.currentPage)
   } catch {
     // error via toast
   }
@@ -213,6 +234,67 @@ async function onPaymentFormSubmit(payload: PaymentPayload) {
 
 function onPaymentFormCancel() {
   paymentDialogVisible.value = false
+}
+
+async function onDispenseAll() {
+  if (!store.currentInvoice) return
+  try {
+    await store.dispense(store.currentInvoice.id)
+    showSuccess('تم صرف الأصناف بنجاح')
+    await store.fetchById(store.currentInvoice.id)
+    await store.fetchPayments(store.currentInvoice.id)
+    await applyFilters(store.currentPage)
+  } catch {
+    // error via toast
+  }
+}
+
+async function onDispenseItem(item: { id?: number }) {
+  if (!store.currentInvoice || !item.id) return
+  dispensingItemId.value = item.id
+  try {
+    await store.dispense(store.currentInvoice.id, [item.id])
+    showSuccess('تم صرف الصنف بنجاح')
+    await store.fetchById(store.currentInvoice.id)
+    await store.fetchPayments(store.currentInvoice.id)
+    await applyFilters(store.currentPage)
+  } catch {
+    // error via toast
+  } finally {
+    dispensingItemId.value = null
+  }
+}
+
+async function onUndispenseAll() {
+  if (!store.currentInvoice) return
+  try {
+    const dispensedIds =
+      store.currentInvoice.items?.filter((i) => i.is_dispensed && i.id).map((i) => i.id!) ?? []
+    if (dispensedIds.length === 0) return
+    await store.undispense(store.currentInvoice.id, dispensedIds)
+    showSuccess('تم تراجع صرف الأصناف بنجاح')
+    await store.fetchById(store.currentInvoice.id)
+    await store.fetchPayments(store.currentInvoice.id)
+    await applyFilters(store.currentPage)
+  } catch {
+    // error via toast
+  }
+}
+
+async function onUndispenseItem(item: { id?: number }) {
+  if (!store.currentInvoice || !item.id) return
+  dispensingItemId.value = item.id
+  try {
+    await store.undispense(store.currentInvoice.id, [item.id])
+    showSuccess('تم تراجع صرف الصنف بنجاح')
+    await store.fetchById(store.currentInvoice.id)
+    await store.fetchPayments(store.currentInvoice.id)
+    await applyFilters(store.currentPage)
+  } catch {
+    // error via toast
+  } finally {
+    dispensingItemId.value = null
+  }
 }
 
 function confirmDeleteInvoice(row: SaleInvoice) {
@@ -241,7 +323,7 @@ function confirmDeleteInvoice(row: SaleInvoice) {
   })
 }
 
-function confirmDeletePayment(payment: FinancialTransaction) {
+function confirmDeletePayment(payment: InvoicePaymentLine) {
   if (!store.currentInvoice) return
   confirm.require({
     message: `هل أنت متأكد من حذف هذه الدفعة (${payment.amount})؟`,
@@ -254,9 +336,14 @@ function confirmDeletePayment(payment: FinancialTransaction) {
     acceptIcon: 'pi pi-trash',
     accept: async () => {
       try {
-        await store.deletePayment(store.currentInvoice!.id, payment.id)
+        if (payment.payment_type === 'balance') {
+          await store.deleteBalancePayment(store.currentInvoice!.id, payment.id)
+        } else {
+          await store.deletePayment(store.currentInvoice!.id, payment.id)
+        }
         showSuccess('تم حذف الدفعة بنجاح')
         await store.fetchPayments(store.currentInvoice!.id)
+        await applyFilters(store.currentPage)
       } catch {
         // error via toast
       }
@@ -301,7 +388,7 @@ onMounted(async () => {
           show-clear
           icon-display="input"
           class="w-15rem"
-          @update:model-value="applyFilters"
+          @update:model-value="() => applyFilters()"
         />
         <Select
           v-model="filters.customer_id"
@@ -310,7 +397,7 @@ onMounted(async () => {
           option-value="value"
           placeholder="العميل"
           class="w-12rem"
-          @change="applyFilters"
+          @change="() => applyFilters()"
         />
         <Select
           v-model="filters.status"
@@ -324,7 +411,7 @@ onMounted(async () => {
           option-value="value"
           placeholder="الحالة"
           class="w-10rem"
-          @change="applyFilters"
+          @change="() => applyFilters()"
         />
         <Select
           v-model="filters.type"
@@ -337,37 +424,85 @@ onMounted(async () => {
           option-value="value"
           placeholder="النوع"
           class="w-10rem"
-          @change="applyFilters"
+          @change="() => applyFilters()"
         />
-        <Button label="تطبيق" icon="pi pi-filter" outlined @click="applyFilters" />
       </div>
-      <Button label="إضافة فاتورة" icon="pi pi-plus" @click="openCreate" />
+      <Button
+        :label="store.indexLoading && store.items.length ? 'جارى التحديث' : 'إضافة فاتورة'"
+        icon="pi pi-plus"
+        :disabled="store.indexLoading && store.items.length > 0"
+        :loading="store.indexLoading && store.items.length > 0"
+        @click="openCreate"
+      />
     </div>
 
     <div class="flex flex-wrap gap-3 mb-4">
-      <Card class="flex-1 min-w-12rem">
+      <Card class="flex-1 min-w-10rem">
         <template #content>
           <div class="text-color-secondary text-sm mb-1">الإجمالي</div>
-          <div class="text-xl font-bold">{{ store.summary.total_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}</div>
+          <div class="text-xl font-bold">
+            {{ store.summary.total_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+          </div>
         </template>
       </Card>
-      <Card class="flex-1 min-w-12rem">
+      <Card class="flex-1 min-w-10rem">
         <template #content>
           <div class="text-color-secondary text-sm mb-1">المدفوع</div>
-          <div class="text-xl font-bold text-green-600">{{ store.summary.paid_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}</div>
+          <div class="text-xl font-bold text-green-600">
+            {{ store.summary.paid_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+          </div>
         </template>
       </Card>
-      <Card class="flex-1 min-w-12rem">
+      <Card class="flex-1 min-w-10rem">
         <template #content>
           <div class="text-color-secondary text-sm mb-1">المتبقي</div>
-          <div class="text-xl font-bold text-amber-600">{{ store.summary.remaining_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}</div>
+          <div class="text-xl font-bold text-amber-600">
+            {{
+              store.summary.remaining_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+            }}
+          </div>
+        </template>
+      </Card>
+      <Card class="flex-1 min-w-10rem">
+        <template #content>
+          <div class="text-color-secondary text-sm mb-1">إجمالي المصروف</div>
+          <div class="text-xl font-bold text-blue-600">
+            {{
+              store.summary.total_dispensed_amount.toLocaleString('ar-EG', {
+                minimumFractionDigits: 2,
+              })
+            }}
+          </div>
+        </template>
+      </Card>
+      <Card class="flex-1 min-w-10rem">
+        <template #content>
+          <div class="text-color-secondary text-sm mb-1">المتبقي للصرف</div>
+          <div class="text-xl font-bold text-cyan-600">
+            {{
+              store.summary.total_remaining_dispense.toLocaleString('ar-EG', {
+                minimumFractionDigits: 2,
+              })
+            }}
+          </div>
+        </template>
+      </Card>
+      <Card class="flex-1 min-w-10rem">
+        <template #content>
+          <div class="text-color-secondary text-sm mb-1">إجمالي المستحقات</div>
+          <div class="text-xl font-bold text-orange-600">
+            {{ store.summary.total_dues.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+          </div>
         </template>
       </Card>
     </div>
 
     <Card>
       <template #content>
-        <div v-if="store.loading" class="flex justify-content-center align-items-center py-8">
+        <div
+          v-if="store.indexLoading && !store.items.length"
+          class="flex justify-content-center align-items-center py-8"
+        >
           <i class="pi pi-spin pi-spinner text-4xl text-color-secondary"></i>
         </div>
         <div
@@ -408,6 +543,24 @@ onMounted(async () => {
           <Column field="status" header="الحالة">
             <template #body="{ data }">
               <Tag :value="statusLabel(data.status)" :severity="statusSeverity(data.status)" />
+            </template>
+          </Column>
+          <Column header="صرف">
+            <template #body="{ data }">
+              <Tag
+                :value="DISPENSE_STATUS_LABELS[getDispenseStats(data.items).status]"
+                :severity="DISPENSE_STATUS_SEVERITY[getDispenseStats(data.items).status]"
+              />
+            </template>
+          </Column>
+          <Column header="تم الصرف">
+            <template #body="{ data }">
+              {{ formatAmount(getDispenseStats(data.items).dispensedAmount) }}
+            </template>
+          </Column>
+          <Column header="متبقي الصرف">
+            <template #body="{ data }">
+              {{ formatAmount(getDispenseStats(data.items).remainingAmount) }}
             </template>
           </Column>
           <Column header="الإجراءات" style="width: 220px">
@@ -492,7 +645,7 @@ onMounted(async () => {
         :model-value="formModel"
         :customers="formCustomers"
         :product-options="productOptions"
-        :loading="store.loading"
+        :loading="store.indexLoading"
         :is-edit="isEditInvoice"
         :existing-items="isEditInvoice && formModel?.items ? formModel.items : undefined"
         @submit="onInvoiceFormSubmit"
@@ -503,29 +656,78 @@ onMounted(async () => {
     <!-- Invoice Detail Dialog -->
     <Dialog
       v-model:visible="detailDialogVisible"
-      :header="`فاتورة ${store.currentInvoice?.invoice_number ?? '...'}`"
+      :header="`فاتورة ${store.currentInvoice?.invoice_number ?? detailOpeningInvoiceNumber ?? '...'}`"
       :modal="true"
       :style="{ width: '100%', maxWidth: '800px', margin: '0 20px' }"
       @hide="closeDetail"
     >
-      <div v-if="store.loading && !store.currentInvoice" class="flex justify-content-center py-6">
+      <div v-if="store.showLoading && !store.currentInvoice" class="flex justify-content-center py-6">
         <i class="pi pi-spin pi-spinner text-4xl text-color-secondary"></i>
       </div>
       <div v-else-if="store.currentInvoice" class="flex flex-column gap-4">
         <div class="flex flex-wrap gap-4">
-          <div><span class="text-color-secondary">العميل:</span> {{ store.currentInvoice.customer?.name ?? '—' }}</div>
-          <div><span class="text-color-secondary">النوع:</span> {{ typeLabel(store.currentInvoice.type) }}</div>
-          <div><span class="text-color-secondary">التاريخ:</span> {{ store.currentInvoice.invoice_date }}</div>
-          <div><span class="text-color-secondary">الحالة:</span>
-            <Tag :value="statusLabel(store.currentInvoice.status)" :severity="statusSeverity(store.currentInvoice.status)" />
+          <div>
+            <span class="text-color-secondary">العميل:</span>
+            {{ store.currentInvoice.customer?.name ?? '—' }}
+          </div>
+          <div>
+            <span class="text-color-secondary">النوع:</span>
+            {{ typeLabel(store.currentInvoice.type) }}
+          </div>
+          <div>
+            <span class="text-color-secondary">التاريخ:</span>
+            {{ store.currentInvoice.invoice_date }}
+          </div>
+          <div>
+            <span class="text-color-secondary">الحالة:</span>
+            <Tag
+              :value="statusLabel(store.currentInvoice.status)"
+              :severity="statusSeverity(store.currentInvoice.status)"
+            />
           </div>
         </div>
         <div class="flex gap-4">
-          <div><span class="text-color-secondary">الإجمالي:</span> {{ store.currentInvoice.total_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}</div>
-          <div><span class="text-color-secondary">المدفوع:</span> {{ store.currentInvoice.paid_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}</div>
+          <div>
+            <span class="text-color-secondary">الإجمالي:</span>
+            {{
+              store.currentInvoice.total_amount.toLocaleString('ar-EG', {
+                minimumFractionDigits: 2,
+              })
+            }}
+          </div>
+          <div>
+            <span class="text-color-secondary">المدفوع:</span>
+            {{
+              store.currentInvoice.paid_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+            }}
+          </div>
           <div v-if="store.currentInvoice.status !== 'paid'">
             <span class="text-color-secondary">المتبقي:</span>
-            {{ (store.currentInvoice.total_amount - store.currentInvoice.paid_amount).toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+            {{
+              (store.currentInvoice.total_amount - store.currentInvoice.paid_amount).toLocaleString(
+                'ar-EG',
+                { minimumFractionDigits: 2 },
+              )
+            }}
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-4 align-items-center">
+          <div>
+            <span class="text-color-secondary">حالة الصرف:</span>
+            <Tag
+              :value="DISPENSE_STATUS_LABELS[getDispenseStats(store.currentInvoice.items).status]"
+              :severity="
+                DISPENSE_STATUS_SEVERITY[getDispenseStats(store.currentInvoice.items).status]
+              "
+            />
+          </div>
+          <div>
+            <span class="text-color-secondary">تم الصرف:</span>
+            {{ formatAmount(getDispenseStats(store.currentInvoice.items).dispensedAmount) }}
+          </div>
+          <div>
+            <span class="text-color-secondary">متبقي الصرف:</span>
+            {{ formatAmount(getDispenseStats(store.currentInvoice.items).remainingAmount) }}
           </div>
         </div>
         <div class="flex gap-2">
@@ -545,37 +747,125 @@ onMounted(async () => {
             @click="confirmDeleteInvoice(store.currentInvoice)"
           />
           <Button
-            v-if="store.currentInvoice.status === 'unpaid' || store.currentInvoice.status === 'partial'"
+            v-if="
+              store.currentInvoice.status === 'unpaid' || store.currentInvoice.status === 'partial'
+            "
             label="إضافة دفعة"
             icon="pi pi-plus"
             size="small"
             @click="openAddPayment"
           />
+          <Button
+            v-if="hasUndispensedItems"
+            label="صرف الأصناف"
+            icon="pi pi-box"
+            size="small"
+            severity="secondary"
+            :loading="store.showLoading"
+            @click="onDispenseAll"
+          />
+          <Button
+            v-if="hasDispensedItems"
+            label="تراجع الصرف"
+            icon="pi pi-undo"
+            size="small"
+            severity="secondary"
+            outlined
+            :loading="store.showLoading"
+            @click="onUndispenseAll"
+          />
         </div>
         <div>
           <h4 class="mt-0 mb-2">الأصناف</h4>
           <DataTable :value="store.currentInvoice.items" size="small" class="p-datatable-sm">
-            <Column field="product_name" header="المنتج" />
+            <Column field="product_name" header="المنتج">
+              <template #body="{ data }">
+                <span>{{ data.product?.name ?? data.product_name ?? '—' }}</span>
+                <Tag v-if="data.is_dispensed" value="تم الصرف" severity="success" class="mr-2" />
+              </template>
+            </Column>
             <Column field="quantity" header="الكمية" />
-            <Column field="unit_price" header="سعر الوحدة" />
-            <Column field="total_price" header="المجموع" />
+            <Column field="unit_price" header="سعر الوحدة">
+              <template #body="{ data }">{{
+                data.unit_price?.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+              }}</template>
+            </Column>
+            <Column field="total_price" header="المجموع">
+              <template #body="{ data }">{{
+                (data.total_price ?? data.quantity * data.unit_price)?.toLocaleString('ar-EG', {
+                  minimumFractionDigits: 2,
+                })
+              }}</template>
+            </Column>
+            <Column header="الإجراءات" style="width: 140px">
+              <template #body="{ data }">
+                <Button
+                  v-if="!data.is_dispensed && data.id"
+                  label="صرف"
+                  icon="pi pi-box"
+                  text
+                  size="small"
+                  severity="secondary"
+                  :loading="dispensingItemId === data.id"
+                  @click="onDispenseItem(data)"
+                />
+                <Button
+                  v-else-if="data.is_dispensed && data.id"
+                  label="تراجع"
+                  icon="pi pi-undo"
+                  text
+                  size="small"
+                  severity="warn"
+                  :loading="dispensingItemId === data.id"
+                  @click="onUndispenseItem(data)"
+                />
+              </template>
+            </Column>
           </DataTable>
         </div>
         <div>
           <h4 class="mt-0 mb-2">الدفعات</h4>
-          <DataTable v-if="store.payments.length" :value="store.payments" size="small" class="p-datatable-sm">
+          <DataTable
+            v-if="store.payments.length"
+            :value="store.payments"
+            size="small"
+            class="p-datatable-sm"
+          >
+            <Column header="النوع" style="width: 7rem">
+              <template #body="{ data }">
+                <Tag
+                  :value="data.payment_type === 'balance' ? 'رصيد' : 'نقدي'"
+                  :severity="data.payment_type === 'balance' ? 'info' : 'success'"
+                />
+              </template>
+            </Column>
             <Column field="date" header="التاريخ" />
             <Column field="amount" header="المبلغ" />
             <Column header="الحساب">
-              <template #body="{ data }">{{ data.account?.name ?? '—' }}</template>
+              <template #body="{ data }">
+                <span v-if="data.payment_type === 'balance'">—</span>
+                <span v-else>{{ data.account?.name ?? '—' }}</span>
+              </template>
             </Column>
             <Column field="description" header="الوصف">
               <template #body="{ data }">{{ data.description ?? '—' }}</template>
             </Column>
             <Column header="الإجراءات" style="width: 120px">
               <template #body="{ data }">
-                <Button icon="pi pi-pencil" text size="small" @click="openEditPayment(data)" />
-                <Button icon="pi pi-trash" text size="small" severity="danger" @click="confirmDeletePayment(data)" />
+                <Button
+                  v-if="data.payment_type === 'cash'"
+                  icon="pi pi-pencil"
+                  text
+                  size="small"
+                  @click="openEditPayment(data)"
+                />
+                <Button
+                  icon="pi pi-trash"
+                  text
+                  size="small"
+                  severity="danger"
+                  @click="confirmDeletePayment(data)"
+                />
               </template>
             </Column>
           </DataTable>
@@ -589,16 +879,18 @@ onMounted(async () => {
       v-model:visible="paymentDialogVisible"
       :header="paymentFormTitle"
       :modal="true"
-      :style="{ width: '420px' }"
+      :style="{ width: '100%', maxWidth: '520px', margin: '0 20px' }"
       @hide="paymentDialogVisible = false"
     >
       <PaymentForm
         v-if="paymentDialogVisible && store.currentInvoice"
         :model-value="paymentFormModel"
         :account-options="accountOptions"
-        :loading="store.loading"
+        :loading="store.showLoading"
         :max-amount="isEditPayment ? undefined : remainingAmount"
         :is-edit="isEditPayment"
+        :allow-balance-split="!isEditPayment"
+        :customer-balance="store.currentInvoice.customer?.balance ?? 0"
         @submit="onPaymentFormSubmit"
         @cancel="onPaymentFormCancel"
       />

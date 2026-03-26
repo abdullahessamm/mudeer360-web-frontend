@@ -125,48 +125,9 @@ function onCustomerComplete(event: { query: string }) {
   customerSuggestions.value = props.customers.filter((c) => c.name.toLowerCase().includes(q))
 }
 
-/** Sum quantities per product_id */
-function quantitiesByProduct(items: { product_id: number; quantity: number }[]) {
-  return items.reduce(
-    (acc, it) => {
-      acc[it.product_id] = (acc[it.product_id] ?? 0) + it.quantity
-      return acc
-    },
-    {} as Record<number, number>,
-  )
-}
-
-/** Stock validation: returns list of products with insufficient stock */
-const stockErrors = computed(() => {
-  const needed = quantitiesByProduct(validItems.value)
-  const errors: { productName: string; available: number; needed: number }[] = []
-  for (const [productIdStr, neededQty] of Object.entries(needed)) {
-    const productId = Number(productIdStr)
-    const product = props.productOptions.find((p) => p.value === productId)
-    if (!product) continue
-    let available = product.quantity
-    if (props.isEdit && props.existingItems?.length) {
-      const oldQty = (props.existingItems ?? [])
-        .filter((it) => it.product_id === productId)
-        .reduce((s, it) => s + (it.quantity ?? 0), 0)
-      available += oldQty
-    }
-    if (available < neededQty) {
-      errors.push({
-        productName: product.label,
-        available,
-        needed: neededQty,
-      })
-    }
-  }
-  return errors
-})
-
-const hasStockErrors = computed(() => stockErrors.value.length > 0)
-
+/** Stock is validated when dispensing, not at create/update */
 async function onSubmit() {
   if (!canSubmit.value) return
-  if (hasStockErrors.value) return
   let customerId: number | undefined
   const inp = customerInput.value
   if (inp) {
@@ -308,14 +269,6 @@ watch(
       <small v-if="!canSubmit && rows.length > 0" class="p-error"
         >يجب إضافة صنف واحد على الأقل بكمية وسعر صحيحين</small
       >
-      <Message v-else-if="hasStockErrors" severity="error" :closable="false" class="mt-2">
-        <div class="font-semibold mb-1">رصيد غير كافٍ:</div>
-        <ul class="m-0 pl-3">
-          <li v-for="err in stockErrors" :key="err.productName">
-            {{ err.productName }}: المتوفر {{ err.available }}، المطلوب {{ err.needed }}
-          </li>
-        </ul>
-      </Message>
     </div>
     <div class="flex justify-content-between align-items-center mt-2">
       <span class="font-semibold"
@@ -328,7 +281,7 @@ watch(
           label="حفظ"
           icon="pi pi-check"
           :loading="loading"
-          :disabled="!canSubmit || hasStockErrors"
+          :disabled="!canSubmit"
         />
       </div>
     </div>

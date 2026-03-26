@@ -10,7 +10,7 @@ export interface DashboardData {
   current_month: { sales_total: number; purchases_total: number }
   sales_status: { paid: number; partial: number; unpaid: number }
   purchases_status: { paid: number; partial: number; unpaid: number }
-  low_stock_products: { id: number; name: string; quantity: number; min_quantity: number; unit: string }[]
+  low_stock_products: { id: number; product_code?: string | null; name: string; quantity: number; min_quantity: number; unit: string }[]
   low_stock_total?: number
   monthly_totals: { month: string; sales: number; purchases: number }[]
 }

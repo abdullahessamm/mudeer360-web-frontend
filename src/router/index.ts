@@ -76,9 +76,36 @@ const router = createRouter({
         },
         {
           path: 'financial-transactions',
-          name: 'financial-transactions',
+          redirect: { name: 'financial-transactions-log' },
+        },
+        {
+          path: 'financial/accounts',
+          name: 'financial-accounts',
+          component: () => import('@/modules/financial/FinancialAccountsSettingsPage.vue'),
+          meta: {
+            title: 'إعدادات الحسابات المالية',
+            breadcrumb: 'المالية',
+          },
+        },
+        {
+          path: 'financial/revenues',
+          name: 'financial-revenues',
           component: () => import('@/modules/financial/FinancialTransactionsPage.vue'),
-          meta: { title: 'المعاملات المالية', breadcrumb: 'المعاملات المالية' },
+          props: { fixedType: 'income' as const },
+          meta: { title: 'الإيرادات', breadcrumb: 'المالية' },
+        },
+        {
+          path: 'financial/expenses',
+          name: 'financial-expenses',
+          component: () => import('@/modules/financial/FinancialTransactionsPage.vue'),
+          props: { fixedType: 'expense' as const },
+          meta: { title: 'المصروفات', breadcrumb: 'المالية' },
+        },
+        {
+          path: 'financial/transactions',
+          name: 'financial-transactions-log',
+          component: () => import('@/modules/financial/FinancialTransactionsPage.vue'),
+          meta: { title: 'سجل المعاملات المالية', breadcrumb: 'المالية' },
         },
         {
           path: 'employees',

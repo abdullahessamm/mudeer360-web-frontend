@@ -9,6 +9,10 @@ const props = defineProps<{
   loading?: boolean
   maxAmount?: number
   isEdit?: boolean
+  /** When true, allow paying part from customer balance (sale invoices). */
+  allowBalanceSplit?: boolean
+  /** Available customer balance for the sale payment. */
+  customerBalance?: number
 }>()
 
 const emit = defineEmits<{
@@ -20,8 +24,11 @@ const today = formatDateLocal(new Date())
 
 const form = reactive({
   amount: props.modelValue?.amount ?? 0,
+  balance_amount: props.modelValue?.balance_amount ?? 0,
   date: props.modelValue?.date ?? today,
-  financial_account_id: props.modelValue?.financial_account_id ?? (props.accountOptions[0]?.value ?? null) as number | null,
+  financial_account_id: props.modelValue?.financial_account_id ?? (props.accountOptions[0]?.value ?? null) as
+    | number
+    | null,
   description: props.modelValue?.description ?? '',
 })
 
@@ -30,6 +37,7 @@ watch(
   (v) => {
     if (v) {
       form.amount = v.amount ?? 0
+      form.balance_amount = v.balance_amount ?? 0
       form.date = v.date ?? today
       form.financial_account_id = v.financial_account_id ?? (props.accountOptions[0]?.value ?? null)
       form.description = v.description ?? ''
@@ -45,19 +53,72 @@ const datePickerValue = computed({
   },
 })
 
+const effectiveCustomerBalance = computed(() =>
+  props.allowBalanceSplit ? (props.customerBalance ?? 0) : 0,
+)
+
+const maxBalancePortion = computed(() => {
+  if (!props.allowBalanceSplit || props.isEdit) return 0
+  const cap = props.maxAmount ?? Infinity
+  return Math.min(effectiveCustomerBalance.value, cap)
+})
+
+const cashAmount = computed(() => Math.max(0, form.amount - (form.balance_amount ?? 0)))
+
 const remainingHint = computed(() => {
   if (props.maxAmount == null || props.maxAmount <= 0) return ''
-  return `المتبقي: ${props.maxAmount.toLocaleString('ar-EG', { minimumFractionDigits: 2 })}`
+  return `المتبقي على الفاتورة: ${props.maxAmount.toLocaleString('ar-EG', { minimumFractionDigits: 2 })}`
 })
 
 const canSubmit = computed(() => {
-  if (form.amount <= 0 || !form.financial_account_id) return false
-  if (props.maxAmount != null && form.amount > props.maxAmount) return false
-  return true
+  if (form.amount <= 0) return false
+  if (props.maxAmount != null && form.amount > props.maxAmount + 0.0001) return false
+
+  if (props.isEdit) {
+    return !!form.financial_account_id
+  }
+
+  if (props.allowBalanceSplit) {
+    const bal = form.balance_amount ?? 0
+    if (bal < 0) return false
+    if (bal > effectiveCustomerBalance.value + 0.0001) return false
+    if (bal > form.amount + 0.0001) return false
+    const cash = form.amount - bal
+    if (cash > 0.0001 && !form.financial_account_id) return false
+    return true
+  }
+
+  return !!form.financial_account_id
 })
 
 function onSubmit() {
-  if (!canSubmit.value || !form.financial_account_id) return
+  if (!canSubmit.value) return
+
+  if (props.isEdit) {
+    if (!form.financial_account_id) return
+    emit('submit', {
+      amount: form.amount,
+      date: form.date,
+      financial_account_id: form.financial_account_id,
+      description: form.description?.trim() || undefined,
+    })
+    return
+  }
+
+  if (props.allowBalanceSplit) {
+    const bal = Math.min(form.balance_amount ?? 0, form.amount, maxBalancePortion.value)
+    const cash = form.amount - bal
+    emit('submit', {
+      amount: form.amount,
+      balance_amount: bal,
+      date: form.date,
+      financial_account_id: cash > 0.0001 ? form.financial_account_id ?? undefined : undefined,
+      description: form.description?.trim() || undefined,
+    })
+    return
+  }
+
+  if (!form.financial_account_id) return
   emit('submit', {
     amount: form.amount,
     date: form.date,
@@ -86,6 +147,30 @@ function onCancel() {
       />
       <small v-if="remainingHint" class="text-color-secondary">{{ remainingHint }}</small>
     </div>
+
+    <template v-if="allowBalanceSplit && !isEdit">
+      <div class="field">
+        <label for="pay-balance">من رصيد العميل</label>
+        <InputNumber
+          id="pay-balance"
+          v-model="form.balance_amount"
+          :min="0"
+          :max="maxBalancePortion"
+          :min-fraction-digits="0"
+          :max-fraction-digits="4"
+          class="w-full mt-1"
+        />
+        <small class="text-color-secondary">
+          الرصيد المتاح: {{ effectiveCustomerBalance.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+        </small>
+      </div>
+      <div v-if="cashAmount > 0.0001" class="text-sm text-color-secondary">
+        النقدي (حساب مالي):
+        {{ cashAmount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+      </div>
+      <div v-else class="text-sm text-color-secondary">الدفعة بالكامل من الرصيد (لا يُسجّل نقدي)</div>
+    </template>
+
     <div class="field">
       <label for="pay-date">التاريخ <span class="text-red-500">*</span></label>
       <DatePicker
@@ -97,8 +182,11 @@ function onCancel() {
         class="w-full mt-1"
       />
     </div>
-    <div class="field">
-      <label for="pay-account">الحساب المالي <span class="text-red-500">*</span></label>
+    <div v-if="!allowBalanceSplit || isEdit || cashAmount > 0.0001" class="field">
+      <label for="pay-account"
+        >الحساب المالي
+        <span v-if="!allowBalanceSplit || isEdit || cashAmount > 0.0001" class="text-red-500">*</span></label
+      >
       <Select
         id="pay-account"
         v-model="form.financial_account_id"

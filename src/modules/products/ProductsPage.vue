@@ -6,8 +6,9 @@ import { showError } from '@/composables/useToast'
 import { useProductsStore } from '@/stores/products'
 import { useProductCategoriesStore } from '@/stores/productCategories'
 import { useDashboardStore } from '@/stores/dashboard'
+import Paginator from 'primevue/paginator'
 import ProductForm from '@/components/forms/ProductForm.vue'
-import type { Product } from '@/types'
+import type { Product, ProductStockMovement, PaginatedPayload } from '@/types'
 
 const route = useRoute()
 const confirm = useConfirm()
@@ -44,7 +45,13 @@ const lowStockOnly = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editingId = ref<number | null>(null)
-const formModel = ref<Partial<Product> | null>(null)
+const formModel = ref<(Partial<Product> & { auto_generate_code?: boolean }) | null>(null)
+
+const stockDialogVisible = ref(false)
+const stockProduct = ref<Product | null>(null)
+const stockRows = ref<ProductStockMovement[]>([])
+const stockMeta = ref<PaginatedPayload<ProductStockMovement>['meta'] | null>(null)
+const stockLoading = ref(false)
 
 const categoryOptions = computed(() => {
   const list = categoriesStore.allCategories.length
@@ -66,6 +73,8 @@ async function openCreate() {
   isEdit.value = false
   editingId.value = null
   formModel.value = {
+    product_code: '',
+    auto_generate_code: true,
     name: '',
     product_category_id: null,
     unit: 'قطعة',
@@ -85,6 +94,8 @@ async function openEdit(row: Product) {
   isEdit.value = true
   editingId.value = row.id
   formModel.value = {
+    product_code: row.product_code ?? '',
+    auto_generate_code: false,
     name: row.name,
     product_category_id: row.product_category_id ?? null,
     unit: row.unit ?? 'قطعة',
@@ -168,6 +179,39 @@ function onPageChange(page: number) {
   store.fetchPage(page, store.perPage, dashboardStore.searchQuery, selectedCategoryId.value, lowStockOnly.value)
 }
 
+function directionLabel(d: string) {
+  return d === 'in' ? 'دخول' : 'خروج'
+}
+
+function formatQty(n: number) {
+  return n.toLocaleString('ar-EG', { minimumFractionDigits: 0, maximumFractionDigits: 4 })
+}
+
+async function openStockDialog(row: Product) {
+  stockProduct.value = row
+  stockDialogVisible.value = true
+  await loadStockPage(1)
+}
+
+async function loadStockPage(page = 1) {
+  if (!stockProduct.value) return
+  stockLoading.value = true
+  try {
+    const res = await store.fetchStockMovements(stockProduct.value.id, page, 15)
+    stockRows.value = res.data
+    stockMeta.value = res.meta
+  } catch {
+    stockRows.value = []
+    stockMeta.value = null
+  } finally {
+    stockLoading.value = false
+  }
+}
+
+function onStockPage(e: { page: number; first: number; rows: number }) {
+  loadStockPage(e.page + 1)
+}
+
 onMounted(async () => {
   await categoriesStore.fetchAllForSelect()
   await store.fetchPage(1, store.perPage, dashboardStore.searchQuery, selectedCategoryId.value, lowStockOnly.value)
@@ -217,6 +261,9 @@ onMounted(async () => {
           class="p-datatable-sm"
           :row-class="getRowClass"
         >
+          <Column field="product_code" header="كود المنتج">
+            <template #body="{ data }">{{ data.product_code ?? '—' }}</template>
+          </Column>
           <Column field="name" header="الاسم" sortable />
           <Column field="category" header="الفئة">
             <template #body="{ data }">{{ data.category?.name ?? '—' }}</template>
@@ -232,8 +279,16 @@ onMounted(async () => {
           </Column>
           <Column field="quantity" header="الكمية" />
           <Column field="min_quantity" header="الحد الأدنى" />
-          <Column header="الإجراءات" style="width: 180px">
+          <Column header="الإجراءات" style="width: 280px">
             <template #body="{ data }">
+              <Button
+                label="حركة المخزون"
+                icon="pi pi-list"
+                text
+                size="small"
+                class="p-button-info"
+                @click="openStockDialog(data)"
+              />
               <Button
                 label="تعديل"
                 icon="pi pi-pencil"
@@ -292,10 +347,65 @@ onMounted(async () => {
         v-if="dialogVisible"
         :model-value="formModel"
         :category-options="formCategoryOptions"
+        :is-edit="isEdit"
         :loading="store.loading"
         @submit="onFormSubmit"
         @cancel="onFormCancel"
       />
+    </Dialog>
+
+    <Dialog
+      v-model:visible="stockDialogVisible"
+      :header="stockProduct ? `حركة المخزون — ${stockProduct.name}` : 'حركة المخزون'"
+      :modal="true"
+      :style="{ width: '100%', maxWidth: '920px', margin: '0 16px' }"
+      :content-style="{ maxHeight: 'min(70vh, 520px)', overflow: 'auto' }"
+      @hide="stockProduct = null"
+    >
+      <div v-if="stockDialogVisible" class="flex flex-column gap-3">
+        <DataTable
+          :value="stockRows"
+          data-key="id"
+          striped-rows
+          responsive-layout="scroll"
+          class="p-datatable-sm"
+          :loading="stockLoading"
+        >
+          <Column field="created_at" header="التاريخ">
+            <template #body="{ data }">
+              {{ data.created_at ? new Date(data.created_at).toLocaleString('ar-EG') : '—' }}
+            </template>
+          </Column>
+          <Column field="direction" header="الاتجاه">
+            <template #body="{ data }">
+              <Tag
+                :value="directionLabel(data.direction)"
+                :severity="data.direction === 'in' ? 'success' : 'danger'"
+              />
+            </template>
+          </Column>
+          <Column field="quantity" header="الكمية">
+            <template #body="{ data }">{{ formatQty(data.quantity) }}</template>
+          </Column>
+          <Column field="source_label" header="المصدر" />
+          <Column header="فاتورة بيع">
+            <template #body="{ data }">{{ data.sale_invoice_number ?? '—' }}</template>
+          </Column>
+          <Column header="فاتورة شراء">
+            <template #body="{ data }">{{ data.purchase_invoice_number ?? '—' }}</template>
+          </Column>
+        </DataTable>
+        <Paginator
+          v-if="stockMeta && stockMeta.total > 0"
+          :rows="stockMeta.per_page"
+          :total-records="stockMeta.total"
+          :first="(stockMeta.current_page - 1) * stockMeta.per_page"
+          @page="onStockPage"
+        />
+        <p v-if="!stockLoading && stockRows.length === 0" class="text-color-secondary m-0">
+          لا توجد حركات مخزون مسجّلة لهذا المنتج
+        </p>
+      </div>
     </Dialog>
   </div>
 </template>

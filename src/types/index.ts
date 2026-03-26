@@ -13,6 +13,7 @@ export interface ProductCategory {
 
 export interface Product {
   id: number
+  product_code?: string | null
   name: string
   product_category_id: number | null
   category?: ProductCategory | null
@@ -22,6 +23,21 @@ export interface Product {
   quantity: number
   min_quantity: number
   description?: string | null
+}
+
+/** GET /api/products/{id}/stock-movements */
+export interface ProductStockMovement {
+  id: number
+  product_id: number
+  direction: 'in' | 'out'
+  quantity: number
+  source: string
+  source_label: string
+  sale_invoice_id: number | null
+  purchase_invoice_id: number | null
+  sale_invoice_number?: string | null
+  purchase_invoice_number?: string | null
+  created_at?: string
 }
 
 export interface Supplier {
@@ -79,6 +95,7 @@ export interface SaleInvoiceItem {
   quantity: number
   unit_price: number
   total_price?: number
+  is_dispensed?: boolean
 }
 
 /** Full sale invoice (from /api/sale-invoices) */
@@ -93,6 +110,7 @@ export interface SaleInvoice {
   status: 'paid' | 'partial' | 'unpaid'
   invoice_date: string
   items: SaleInvoiceItem[]
+  payments?: InvoicePaymentLine[]
   created_at?: string
   updated_at?: string
 }
@@ -116,6 +134,7 @@ export interface PurchaseInvoiceItem {
   quantity: number
   unit_price: number
   total_price?: number
+  is_received?: boolean
 }
 
 /** Full purchase invoice (from /api/purchase-invoices) */
@@ -130,6 +149,7 @@ export interface PurchaseInvoice {
   status: 'paid' | 'partial' | 'unpaid'
   invoice_date: string
   items: PurchaseInvoiceItem[]
+  payments?: FinancialTransaction[]
   created_at?: string
   updated_at?: string
 }
@@ -142,13 +162,36 @@ export interface PurchaseInvoiceCreatePayload {
   items: { product_id: number; quantity: number; unit_price: number }[]
 }
 
-/** Payload for add/update payment */
+/** Payload for add/update payment (sale: optional balance + cash split; purchase: cash only) */
 export interface PaymentPayload {
   amount: number
+  /** Portion paid from customer prepaid balance (sale invoices only). */
+  balance_amount?: number
   date: string
-  financial_account_id: number
+  financial_account_id?: number | null
   description?: string
 }
+
+/** Unified line from GET sale-invoices/{id}/payments */
+export type InvoicePaymentLine =
+  | {
+      payment_type: 'cash'
+      id: number
+      amount: number
+      date: string
+      description?: string | null
+      financial_account_id: number
+      account?: FinancialAccount | null
+      created_at?: string
+    }
+  | {
+      payment_type: 'balance'
+      id: number
+      amount: number
+      date: string
+      description?: string | null
+      created_at?: string
+    }
 
 /** Purchase invoice summary (used in SupplierWithInvoices) */
 export interface SupplierPurchaseInvoice {
@@ -162,8 +205,16 @@ export interface SupplierPurchaseInvoice {
   invoice_date: string
 }
 
+export interface SupplierSummary {
+  total_received_amount: number
+  total_remaining_receive: number
+  total_remaining: number
+  total_dues: number
+}
+
 export interface SupplierWithInvoices extends Supplier {
-  purchase_invoices: SupplierPurchaseInvoice[]
+  purchase_invoices: PurchaseInvoice[]
+  summary?: SupplierSummary
 }
 
 export interface Customer {
@@ -173,6 +224,7 @@ export interface Customer {
   email: string | null
   address: string | null
   notes: string | null
+  balance?: number
   created_at?: string
   updated_at?: string
 }
@@ -188,24 +240,72 @@ export interface CustomerSaleInvoice {
   invoice_date: string
 }
 
-export interface CustomerWithInvoices extends Customer {
-  invoices: CustomerSaleInvoice[]
+export interface CustomerSummary {
+  total_dispensed_amount: number
+  total_remaining_dispense: number
+  total_remaining: number
+  total_dues: number
 }
+
+export interface CustomerWithInvoices extends Customer {
+  invoices: SaleInvoice[]
+  summary?: CustomerSummary
+}
+
+export type FinancialAccountTypeValue =
+  | 'cash'
+  | 'bank'
+  | 'electronic_wallet'
+  | 'check'
+  | 'other'
 
 export interface FinancialAccount {
   id: number
   name: string
-  type?: string
+  type?: FinancialAccountTypeValue | string
   computed_balance?: number
   created_at?: string
   updated_at?: string
 }
+
+/** Backend `FinancialExpenseTypeEnum` (manual + system). */
+export type FinancialExpenseType =
+  | 'purchase_invoice'
+  | 'payroll'
+  | 'employee'
+  | 'customer_balance'
+  | 'rent'
+  | 'utilities'
+  | 'supplies'
+  | 'salaries'
+  | 'marketing'
+  | 'other'
+
+/** Backend `FinancialIncomeTypeEnum` (manual + system). */
+export type FinancialIncomeType =
+  | 'sale_invoice'
+  | 'customer_balance'
+  | 'retail'
+  | 'services'
+  | 'wholesale'
+  | 'subscription'
+  | 'other'
 
 export interface FinancialTransaction {
   id: number
   financial_account_id: number
   account?: FinancialAccount | null
   type: 'income' | 'expense'
+  /** Expense rows only; manual cashbook uses rent/…/other. */
+  expense_type?: FinancialExpenseType | string | null
+  /** Income rows only; manual cashbook uses retail/…/other. */
+  income_type?: FinancialIncomeType | string | null
+  /** Purchase invoice payment expenses only. */
+  supplier_name?: string | null
+  /** Sale invoice cash income only. */
+  customer_name?: string | null
+  /** Purchase invoice # (expense) or sale invoice # (income). */
+  invoice_number?: string | null
   amount: number
   date: string
   description: string | null
@@ -215,6 +315,19 @@ export interface FinancialTransaction {
   created_by?: { id: number; name?: string } | null
   created_at?: string
   updated_at?: string
+}
+
+/** GET /api/customers/{id}/balance-transactions */
+export interface CustomerBalanceTransaction {
+  id: number
+  change_amount: number
+  type: 'manual_charge' | 'manual_withdraw' | 'invoice_payment'
+  sale_invoice_id: number | null
+  invoice_number?: string | null
+  financial_transactions?: FinancialTransaction[]
+  description?: string | null
+  date: string
+  created_at?: string
 }
 
 export interface Employee {

@@ -26,6 +26,9 @@ export const productCategoryRules = {
 
 /** Product - StoreProductRequest */
 export const productRules = {
+  product_code: {
+    maxLength: maxLength(50),
+  },
   name: {
     required,
     maxLength: maxLength(255),

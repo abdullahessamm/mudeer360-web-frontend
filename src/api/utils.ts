@@ -50,12 +50,23 @@ export function parsePaginatedResponse<T>(data: unknown): PaginatedPayload<T> {
   const res = data as Record<string, unknown>
 
   // New schema: { success, payload: { data, meta, links } }
-  if (res.success && res.payload && typeof res.payload === 'object') {
-    const p = res.payload as PaginatedPayload<T>
-    return {
-      data: Array.isArray(p.data) ? p.data : [],
-      meta: p.meta ?? defaultMeta(),
-      links: p.links ?? defaultLinks(),
+  if (res.success && res.payload !== undefined && res.payload !== null) {
+    // Laravel JsonResource::collection nested in json() sometimes becomes a plain array (no data/meta wrapper).
+    if (Array.isArray(res.payload)) {
+      const list = res.payload as T[]
+      return {
+        data: list,
+        meta: defaultMeta(list.length),
+        links: defaultLinks(),
+      }
+    }
+    if (typeof res.payload === 'object') {
+      const p = res.payload as PaginatedPayload<T>
+      return {
+        data: Array.isArray(p.data) ? p.data : [],
+        meta: p.meta ?? defaultMeta(),
+        links: p.links ?? defaultLinks(),
+      }
     }
   }
 
@@ -88,7 +99,16 @@ function defaultLinks() {
 
 /** Get error message from axios error response */
 export function getErrorMessage(e: unknown, fallback: string): string {
-  const err = e as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } }
+  const err = e as {
+    response?: {
+      status?: number
+      data?: { message?: string; errors?: Record<string, string[]> }
+    }
+  }
+  const status = err?.response?.status
+  if (status === 405) {
+    return 'الخادم لا يقبل طريقة الطلب (405). يجب تسجيل POST و PUT و DELETE لمسار financial-accounts في واجهة الـ API (مثال: Route::apiResource في routes/api.php).'
+  }
   const data = err?.response?.data
   if (!data) return fallback
   if (data.message) return data.message

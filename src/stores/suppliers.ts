@@ -37,9 +37,13 @@ export const useSuppliersStore = defineStore('suppliers', () => {
   }
 
   /** Fetch single supplier with purchase invoices (GET /api/suppliers/{id}) */
-  async function fetchById(id: number): Promise<SupplierWithInvoices | null> {
+  async function fetchById(
+    id: number,
+    filters?: { date_from?: string; date_to?: string }
+  ): Promise<SupplierWithInvoices | null> {
     try {
-      const { data } = await apiClient.get(`/api/suppliers/${id}`)
+      const params = filters?.date_from || filters?.date_to ? filters : undefined
+      const { data } = await apiClient.get(`/api/suppliers/${id}`, { params })
       let payload = data as SupplierWithInvoices | { payload?: SupplierWithInvoices; data?: SupplierWithInvoices }
       if (payload && typeof payload === 'object' && 'payload' in payload && payload.payload) {
         payload = payload.payload
