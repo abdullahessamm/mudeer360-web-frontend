@@ -23,6 +23,11 @@ const stockMenuItems = [
   { label: 'المنتجات', to: '/products', icon: 'pi pi-box' },
 ]
 
+const assetsMenuItems = [
+  { label: 'فئات الأصول', to: '/asset-categories', icon: 'pi pi-sitemap' },
+  { label: 'الأصول', to: '/assets', icon: 'pi pi-building' },
+]
+
 const purchasingMenuItems = [
   { label: 'الموردين', to: '/suppliers', icon: 'pi pi-users' },
   { label: 'فواتير الشراء', to: '/purchases', icon: 'pi pi-truck' },
@@ -34,6 +39,7 @@ const salesMenuItems = [
 ]
 
 const stockExpanded = ref(false)
+const assetsExpanded = ref(false)
 const purchasingExpanded = ref(false)
 const salesExpanded = ref(false)
 
@@ -41,6 +47,12 @@ const isStockSectionActive = computed(
   () =>
     router.currentRoute.value.path.startsWith('/product-categories') ||
     router.currentRoute.value.path.startsWith('/products'),
+)
+
+const isAssetsSectionActive = computed(
+  () =>
+    router.currentRoute.value.path.startsWith('/asset-categories') ||
+    router.currentRoute.value.path.startsWith('/assets'),
 )
 
 const isPurchasingSectionActive = computed(
@@ -57,6 +69,10 @@ const isSalesSectionActive = computed(
 
 function toggleStockGroup() {
   stockExpanded.value = !stockExpanded.value
+}
+
+function toggleAssetsGroup() {
+  assetsExpanded.value = !assetsExpanded.value
 }
 
 function togglePurchasingGroup() {
@@ -80,6 +96,7 @@ watch(
   () => router.currentRoute.value.path,
   (p) => {
     if (p.startsWith('/product-categories') || p.startsWith('/products')) stockExpanded.value = true
+    if (p.startsWith('/asset-categories') || p.startsWith('/assets')) assetsExpanded.value = true
     if (p.startsWith('/suppliers') || p.startsWith('/purchases')) purchasingExpanded.value = true
     if (p.startsWith('/customers') || p.startsWith('/sales')) salesExpanded.value = true
     if (p.startsWith('/financial')) financialExpanded.value = true
@@ -191,6 +208,36 @@ onUnmounted(() => {
             <div v-show="stockExpanded" class="sidebar-subnav">
               <button
                 v-for="item in stockMenuItems"
+                :key="item.to"
+                type="button"
+                :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+                @click="router.push(item.to)"
+              >
+                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-group">
+            <button
+              type="button"
+              class="sidebar-group-header"
+              :class="{ 'sidebar-item-active': isAssetsSectionActive }"
+              @click="toggleAssetsGroup"
+            >
+              <i class="pi pi-building sidebar-icon"></i>
+              <span class="flex-1 text-right">الأصول</span>
+              <i
+                :class="[
+                  'pi sidebar-chevron',
+                  assetsExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                ]"
+              ></i>
+            </button>
+            <div v-show="assetsExpanded" class="sidebar-subnav">
+              <button
+                v-for="item in assetsMenuItems"
                 :key="item.to"
                 type="button"
                 :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
@@ -375,6 +422,41 @@ onUnmounted(() => {
             <div v-show="stockExpanded" class="sidebar-subnav">
               <button
                 v-for="item in stockMenuItems"
+                :key="item.to"
+                type="button"
+                :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+                @click="
+                  () => {
+                    router.push(item.to)
+                    closeSidebar()
+                  }
+                "
+              >
+                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-group">
+            <button
+              type="button"
+              class="sidebar-group-header"
+              :class="{ 'sidebar-item-active': isAssetsSectionActive }"
+              @click="toggleAssetsGroup"
+            >
+              <i class="pi pi-building sidebar-icon"></i>
+              <span class="flex-1 text-right">الأصول</span>
+              <i
+                :class="[
+                  'pi sidebar-chevron',
+                  assetsExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                ]"
+              ></i>
+            </button>
+            <div v-show="assetsExpanded" class="sidebar-subnav">
+              <button
+                v-for="item in assetsMenuItems"
                 :key="item.to"
                 type="button"
                 :class="['sidebar-item', 'sidebar-subitem', { 'sidebar-item-active': isActiveRoute(item.to) }]"

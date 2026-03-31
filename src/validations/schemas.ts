@@ -24,6 +24,37 @@ export const productCategoryRules = {
   },
 }
 
+/** Asset Category - same rules as product category */
+export const assetCategoryRules = productCategoryRules
+
+/** Asset - StoreAssetRequest (client-side mirror) */
+export const assetRules = {
+  name: {
+    required,
+    maxLength: maxLength(255),
+  },
+  code: {
+    maxLength: maxLength(64),
+  },
+  purchase_price: {
+    required,
+    numeric,
+    minValue: minValue(0),
+  },
+  purchase_date: {
+    required,
+  },
+  status: {
+    required,
+  },
+  location: {
+    maxLength: maxLength(255),
+  },
+  notes: {
+    maxLength: maxLength(65535),
+  },
+}
+
 /** Product - StoreProductRequest */
 export const productRules = {
   product_code: {

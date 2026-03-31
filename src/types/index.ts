@@ -11,6 +11,35 @@ export interface ProductCategory {
   updated_at?: string
 }
 
+/** Backend `App\Enums\Assets\AssetStatus` */
+export type AssetStatusValue =
+  | 'working'
+  | 'disabled'
+  | 'under_maintenance'
+  | 'excluded'
+
+export interface AssetCategory {
+  id: number
+  name: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface Asset {
+  id: number
+  code: string
+  name: string
+  asset_category_id: number | null
+  category?: AssetCategory | null
+  purchase_price: number
+  purchase_date: string
+  status: AssetStatusValue | string
+  location?: string | null
+  notes?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
 export interface Product {
   id: number
   product_code?: string | null

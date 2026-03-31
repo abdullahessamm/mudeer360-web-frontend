@@ -39,6 +39,18 @@ const router = createRouter({
           meta: { title: 'فئات المنتجات', breadcrumb: 'فئات المنتجات' },
         },
         {
+          path: 'asset-categories',
+          name: 'asset-categories',
+          component: () => import('@/modules/assets/AssetCategoriesPage.vue'),
+          meta: { title: 'فئات الأصول', breadcrumb: 'فئات الأصول' },
+        },
+        {
+          path: 'assets',
+          name: 'assets',
+          component: () => import('@/modules/assets/AssetsPage.vue'),
+          meta: { title: 'الأصول', breadcrumb: 'الأصول' },
+        },
+        {
           path: 'suppliers',
           name: 'suppliers',
           component: () => import('@/modules/suppliers/SuppliersPage.vue'),
