@@ -10,8 +10,16 @@ import {
 } from '@/stores/financialTransactions'
 import { useFinancialAccountsStore } from '@/stores/financialAccounts'
 import FinancialTransactionForm from '@/components/forms/FinancialTransactionForm.vue'
-import { expenseTypeLabel } from '@/lib/expenseTypes'
-import { incomeTypeLabel } from '@/lib/incomeTypes'
+import {
+  expenseTypeLabel,
+  LINKED_EXPENSE_TYPE_OPTIONS,
+  MANUAL_EXPENSE_TYPE_OPTIONS,
+} from '@/lib/expenseTypes'
+import {
+  incomeTypeLabel,
+  LINKED_INCOME_TYPE_OPTIONS,
+  MANUAL_INCOME_TYPE_OPTIONS,
+} from '@/lib/incomeTypes'
 import type { FinancialTransaction } from '@/types'
 
 const props = defineProps<{
@@ -56,6 +64,21 @@ const formTitle = computed(() => (isEdit.value ? 'تعديل المعاملة' :
 const accountOptions = computed(() =>
   accountsStore.items.map((a) => ({ label: a.name, value: a.id })),
 )
+
+type FilterOpt = { label: string; value: string | null }
+
+/** يدوي أولاً ثم مرتبط بالنظام (فواتير، رصيد عميل، …) — يطابق الفلاتر في الـ API */
+const incomeTypeFilterOptions = computed((): FilterOpt[] => [
+  { label: 'كل التصنيفات', value: null },
+  ...MANUAL_INCOME_TYPE_OPTIONS.map((o) => ({ label: o.label, value: o.value })),
+  ...LINKED_INCOME_TYPE_OPTIONS.map((o) => ({ label: o.label, value: o.value })),
+])
+
+const expenseTypeFilterOptions = computed((): FilterOpt[] => [
+  { label: 'كل التصنيفات', value: null },
+  ...MANUAL_EXPENSE_TYPE_OPTIONS.map((o) => ({ label: o.label, value: o.value })),
+  ...LINKED_EXPENSE_TYPE_OPTIONS.map((o) => ({ label: o.label, value: o.value })),
+])
 
 const overviewSum = computed(() =>
   (overview.value?.items ?? []).reduce((s, t) => s + (Number(t.amount) || 0), 0),
@@ -306,8 +329,8 @@ onMounted(async () => {
                   {{ overviewSum.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
                 </span>
                 <p class="text-sm text-color-secondary m-0 mt-2">
-                  مجموع المبالغ من أول {{ (overview?.items ?? []).length }} سجل مطابق للفلتر (للتحليل).
-                  إجمالي السجلات المطابقة:
+                  مجموع المبالغ من أول {{ (overview?.items ?? []).length }} سجل مطابق للفلتر
+                  (للتحليل). إجمالي السجلات المطابقة:
                   {{ (overview?.totalCount ?? 0).toLocaleString('ar-EG') }}.
                 </p>
               </template>
@@ -388,7 +411,10 @@ onMounted(async () => {
       <div class="flex align-items-center gap-2">
         <span class="text-lg font-semibold">رصيد الحساب:</span>
         <span
-          :class="['text-xl font-bold', slice.accountBalance >= 0 ? 'text-green-600' : 'text-red-600']"
+          :class="[
+            'text-xl font-bold',
+            slice.accountBalance >= 0 ? 'text-green-600' : 'text-red-600',
+          ]"
         >
           {{ slice.accountBalance.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
         </span>
@@ -422,6 +448,30 @@ onMounted(async () => {
             @change="applyFilters"
           />
           <Select
+            v-if="fixedType === 'income'"
+            v-model="slice.filters.income_type"
+            :options="incomeTypeFilterOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="تصنيف الإيراد"
+            filter
+            filter-placeholder="بحث…"
+            class="w-72"
+            @change="applyFilters"
+          />
+          <Select
+            v-if="fixedType === 'expense'"
+            v-model="slice.filters.expense_type"
+            :options="expenseTypeFilterOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="تصنيف المصروف"
+            filter
+            filter-placeholder="بحث…"
+            class="w-72"
+            @change="applyFilters"
+          />
+          <Select
             v-if="!fixedType"
             v-model="slice.filters.type"
             :options="[
@@ -435,7 +485,6 @@ onMounted(async () => {
             class="w-10rem"
             @change="applyFilters"
           />
-          <Tag v-else :value="fixedType === 'income' ? 'إيرادات فقط' : 'مصروفات فقط'" class="align-self-center" />
           <DatePicker
             v-model="slice.filters.dateRange"
             selection-mode="range"
@@ -498,9 +547,7 @@ onMounted(async () => {
             style="min-width: 130px"
           >
             <template #body="{ data }">
-              {{
-                data.type === 'expense' ? expenseTypeLabel(data.expense_type) : '—'
-              }}
+              {{ data.type === 'expense' ? expenseTypeLabel(data.expense_type) : '—' }}
             </template>
           </Column>
           <Column
@@ -510,9 +557,7 @@ onMounted(async () => {
             style="min-width: 120px"
           >
             <template #body="{ data }">
-              {{
-                data.type === 'expense' ? (data.supplier_name ?? '—') : '—'
-              }}
+              {{ data.type === 'expense' ? (data.supplier_name ?? '—') : '—' }}
             </template>
           </Column>
           <Column

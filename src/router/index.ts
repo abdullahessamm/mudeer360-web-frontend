@@ -87,6 +87,18 @@ const router = createRouter({
           meta: { title: 'فواتير الشراء', breadcrumb: 'فواتير الشراء' },
         },
         {
+          path: 'partners',
+          name: 'partners',
+          component: () => import('@/modules/partners/PartnersList.vue'),
+          meta: { title: 'جاري الشركاء', breadcrumb: 'الحسابات' },
+        },
+        {
+          path: 'partners/:id/statement',
+          name: 'partner-statement',
+          component: () => import('@/modules/partners/PartnerStatement.vue'),
+          meta: { title: 'كشف حساب الشريك', breadcrumb: 'جاري الشركاء' },
+        },
+        {
           path: 'financial-transactions',
           redirect: { name: 'financial-transactions-log' },
         },
@@ -118,6 +130,28 @@ const router = createRouter({
           name: 'financial-transactions-log',
           component: () => import('@/modules/financial/FinancialTransactionsPage.vue'),
           meta: { title: 'سجل المعاملات المالية', breadcrumb: 'المالية' },
+        },
+        {
+          path: 'financial/reports/income',
+          name: 'financial-reports-income',
+          component: () => import('@/modules/financial/reports/IncomeStatementPage.vue'),
+          meta: { title: 'قائمة الدخل', breadcrumb: 'التقارير المالية' },
+        },
+        {
+          path: 'financial/reports/cashflow',
+          name: 'financial-reports-cashflow',
+          component: () => import('@/modules/financial/reports/CashFlowPage.vue'),
+          meta: { title: 'التدفقات النقدية', breadcrumb: 'التقارير المالية' },
+        },
+        {
+          path: 'financial/reports/balance',
+          redirect: { path: '/financial/reports/balance-sheet' },
+        },
+        {
+          path: 'financial/reports/balance-sheet',
+          name: 'financial-reports-balance',
+          component: () => import('@/modules/financial/reports/BalanceSheetPage.vue'),
+          meta: { title: 'قائمة المركز المالي', breadcrumb: 'التقارير المالية' },
         },
         {
           path: 'employees',

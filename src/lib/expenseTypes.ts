@@ -10,6 +10,15 @@ export const MANUAL_EXPENSE_TYPE_OPTIONS = [
   { label: 'أخرى', value: 'other' },
 ] as const
 
+/** فواتير شراء ورواتب وربط نظامي — يطابق `FinancialExpenseTypeEnum` غير اليدوي */
+export const LINKED_EXPENSE_TYPE_OPTIONS = [
+  { label: 'فاتورة شراء', value: 'purchase_invoice' },
+  { label: 'رواتب (موظفين)', value: 'payroll' },
+  { label: 'موظف (سلفة/…)', value: 'employee' },
+  { label: 'رصيد عميل', value: 'customer_balance' },
+  { label: 'مسحوبات شريك (جاري)', value: 'partner_withdraw' },
+] as const
+
 export type ManualExpenseTypeValue = (typeof MANUAL_EXPENSE_TYPE_OPTIONS)[number]['value']
 
 const EXPENSE_TYPE_LABELS: Record<string, string> = {
@@ -23,6 +32,7 @@ const EXPENSE_TYPE_LABELS: Record<string, string> = {
   payroll: 'رواتب (موظفين)',
   employee: 'موظف (سلفة/…)',
   customer_balance: 'رصيد عميل',
+  partner_withdraw: 'مسحوبات شريك (جاري)',
 }
 
 /** Arabic label for display in tables; falls back to raw value when unknown. */

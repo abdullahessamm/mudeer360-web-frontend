@@ -19,6 +19,10 @@ export interface FinancialFiltersState {
   /** يُستخدم في نطاق `all` فقط؛ الإيرادات/المصروفات يُحدَّد النوع من النطاق */
   type: 'income' | 'expense' | null
   dateRange: [Date, Date] | null
+  /** فلتر صفحة الإيرادات — يُرسل كـ income_type للـ API */
+  income_type: string | null
+  /** فلتر صفحة المصروفات — يُرسل كـ expense_type للـ API */
+  expense_type: string | null
 }
 
 export interface FinancialScopeSlice {
@@ -34,6 +38,8 @@ function defaultFilters(_scope: FinancialPageScope): FinancialFiltersState {
     financial_account_id: null,
     type: null,
     dateRange: getCurrentMonthRange() as [Date, Date],
+    income_type: null,
+    expense_type: null,
   }
 }
 
@@ -62,6 +68,10 @@ function buildParamsFromSlice(scope: FinancialPageScope, s: FinancialScopeSlice)
     type: apiTypeForScope(scope, s.filters),
     date_from: date_from ? formatDateLocal(date_from) : undefined,
     date_to: date_to ? formatDateLocal(date_to) : undefined,
+    income_type:
+      scope === 'income' && s.filters.income_type ? s.filters.income_type : undefined,
+    expense_type:
+      scope === 'expense' && s.filters.expense_type ? s.filters.expense_type : undefined,
   }
 }
 
@@ -139,6 +149,8 @@ export const useFinancialTransactionsStore = defineStore('financialTransactions'
       if (p.type) params.type = p.type
       if (p.date_from) params.date_from = p.date_from
       if (p.date_to) params.date_to = p.date_to
+      if (p.income_type) params.income_type = p.income_type
+      if (p.expense_type) params.expense_type = p.expense_type
 
       const { data } = await apiClient.get('/api/financial-transactions', { params })
       const fromApi = pickAccountBalanceFromResponse(data)
@@ -166,6 +178,8 @@ export const useFinancialTransactionsStore = defineStore('financialTransactions'
       if (p.type) params.type = p.type
       if (p.date_from) params.date_from = p.date_from
       if (p.date_to) params.date_to = p.date_to
+      if (p.income_type) params.income_type = p.income_type
+      if (p.expense_type) params.expense_type = p.expense_type
       const { data } = await apiClient.get('/api/financial-transactions', { params })
       const payload = parsePaginatedResponse<FinancialTransaction>(data)
       o.items = payload.data ?? []
@@ -282,6 +296,8 @@ export const useFinancialTransactionsStore = defineStore('financialTransactions'
       if (p.type) params.type = p.type
       if (p.date_from) params.date_from = p.date_from
       if (p.date_to) params.date_to = p.date_to
+      if (p.income_type) params.income_type = p.income_type
+      if (p.expense_type) params.expense_type = p.expense_type
       const { data } = await apiClient.get('/api/financial-transactions', { params })
       const payload = parsePaginatedResponse<FinancialTransaction>(data)
       const batch = payload.data ?? []
