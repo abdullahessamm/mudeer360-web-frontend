@@ -1,13 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import html2pdf from 'html2pdf.js'
 import { useConfirm } from 'primevue/useconfirm'
 import { formatDateLocal, getCurrentMonthRange } from '@/lib/date'
-import {
-  getReceiveStats,
-  RECEIVE_STATUS_LABELS,
-  RECEIVE_STATUS_SEVERITY,
-} from '@/lib/receive'
+import { getReceiveStats, RECEIVE_STATUS_LABELS, RECEIVE_STATUS_SEVERITY } from '@/lib/receive'
 import { showError, showSuccess } from '@/composables/useToast'
 import { exportAccountStatement } from '@/composables/useExportAccountStatement'
 import { useSuppliersStore } from '@/stores/suppliers'
@@ -43,6 +40,17 @@ const isEditPayment = ref(false)
 const editingPaymentId = ref<number | null>(null)
 const paymentFormModel = ref<Partial<PaymentPayload> | null>(null)
 const receivingItemId = ref<number | null>(null)
+
+const invoicePdfRoot = ref<HTMLElement | null>(null)
+const pdfExporting = ref(false)
+const issuedAtTimestamp = ref(Date.now())
+
+const issuedAtLabel = computed(() =>
+  new Date(issuedAtTimestamp.value).toLocaleString('ar-EG', {
+    dateStyle: 'long',
+    timeStyle: 'short',
+  }),
+)
 
 const supplierId = computed(() => Number(route.params.id))
 
@@ -161,6 +169,60 @@ function goBack() {
 
 function formatAmount(n: number) {
   return n.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+}
+
+function sanitizeFilename(name: string) {
+  return name.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'invoice'
+}
+
+function getPurchaseInvoicePdfOptions() {
+  if (!selectedInvoice.value || !supplier.value) return null
+  return {
+    margin: [10, 10, 10, 10] as [number, number, number, number],
+    filename: `${sanitizeFilename(`purchase-${selectedInvoice.value.invoice_number}-${supplier.value.name}`)}.pdf`,
+    image: { type: 'jpeg' as const, quality: 0.92 },
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+  }
+}
+
+/** يفتح PDF في تبويب جديد (يمكن الطباعة من عارض PDF) */
+async function printPurchaseInvoice() {
+  if (!invoicePdfRoot.value) return
+  const opt = getPurchaseInvoicePdfOptions()
+  if (!opt) return
+  issuedAtTimestamp.value = Date.now()
+  pdfExporting.value = true
+  await nextTick()
+  await nextTick()
+  try {
+    const blob = (await html2pdf().set(opt).from(invoicePdfRoot.value).outputPdf('blob')) as Blob
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    setTimeout(() => URL.revokeObjectURL(url), 120_000)
+  } catch {
+    showError('تعذّر إنشاء ملف PDF')
+  } finally {
+    pdfExporting.value = false
+  }
+}
+
+async function downloadPurchaseInvoicePdf() {
+  if (!invoicePdfRoot.value) return
+  const opt = getPurchaseInvoicePdfOptions()
+  if (!opt) return
+  issuedAtTimestamp.value = Date.now()
+  pdfExporting.value = true
+  await nextTick()
+  await nextTick()
+  try {
+    await html2pdf().set(opt).from(invoicePdfRoot.value).save()
+    showSuccess('تم تحميل ملف PDF')
+  } catch {
+    showError('تعذّر إنشاء ملف PDF')
+  } finally {
+    pdfExporting.value = false
+  }
 }
 
 async function openInvoiceDetails(invoice: PurchaseInvoice, openPaymentAfter = false) {
@@ -657,6 +719,7 @@ onMounted(async () => {
           :header="
             selectedInvoice ? `تفاصيل فاتورة ${selectedInvoice.invoice_number}` : 'تفاصيل الفاتورة'
           "
+          class="invoice-details-dialog"
           :modal="true"
           :style="{ width: '100%', maxWidth: '800px', margin: '0 20px' }"
           @hide="closeDetailsDialog"
@@ -664,161 +727,266 @@ onMounted(async () => {
           <div v-if="purchasesStore.showLoading" class="flex justify-content-center py-6">
             <i class="pi pi-spin pi-spinner text-3xl text-color-secondary"></i>
           </div>
-          <div v-else-if="selectedInvoice" class="flex flex-column gap-4">
-            <div class="flex flex-wrap gap-2 mb-2">
-              <Tag
-                severity="info"
-                :value="`الإجمالي: ${formatAmount(selectedInvoice.total_amount)}`"
+          <div
+            v-else-if="selectedInvoice"
+            ref="invoicePdfRoot"
+            class="purchase-invoice-doc"
+            :class="{ 'purchase-invoice-doc--pdf-export': pdfExporting }"
+          >
+            <div class="flex flex-wrap gap-2 mb-3 no-print">
+              <Button
+                label="طباعة"
+                icon="pi pi-print"
+                size="small"
+                outlined
+                :loading="pdfExporting"
+                :disabled="pdfExporting"
+                @click="printPurchaseInvoice"
               />
-              <Tag
-                severity="success"
-                :value="`المدفوع: ${formatAmount(selectedInvoice.paid_amount)}`"
-              />
-              <Tag
-                :severity="
-                  selectedInvoice.total_amount - selectedInvoice.paid_amount > 0
-                    ? 'warn'
-                    : 'secondary'
-                "
-                :value="`المتبقي: ${formatAmount(Math.max(0, selectedInvoice.total_amount - selectedInvoice.paid_amount))}`"
+              <Button
+                label="تحميل PDF"
+                icon="pi pi-file-pdf"
+                size="small"
+                severity="secondary"
+                :loading="pdfExporting"
+                :disabled="pdfExporting"
+                @click="downloadPurchaseInvoicePdf"
               />
             </div>
-            <div class="flex flex-wrap gap-4 align-items-center">
-              <div>
-                <span class="text-color-secondary">حالة الاستلام:</span>
+            <div class="invoice-screen flex flex-column gap-4">
+              <div class="flex flex-wrap gap-2 mb-2">
                 <Tag
-                  :value="RECEIVE_STATUS_LABELS[getReceiveStats(selectedInvoice.items).status]"
-                  :severity="RECEIVE_STATUS_SEVERITY[getReceiveStats(selectedInvoice.items).status]"
+                  severity="info"
+                  :value="`الإجمالي: ${formatAmount(selectedInvoice.total_amount)}`"
+                />
+                <Tag
+                  severity="success"
+                  :value="`المدفوع: ${formatAmount(selectedInvoice.paid_amount)}`"
+                />
+                <Tag
+                  :severity="
+                    selectedInvoice.total_amount - selectedInvoice.paid_amount > 0
+                      ? 'warn'
+                      : 'secondary'
+                  "
+                  :value="`المتبقي: ${formatAmount(Math.max(0, selectedInvoice.total_amount - selectedInvoice.paid_amount))}`"
                 />
               </div>
-              <div>
-                <span class="text-color-secondary">تم الاستلام:</span>
-                {{ formatAmount(getReceiveStats(selectedInvoice.items).receivedAmount) }}
+              <div class="flex flex-wrap gap-4 align-items-center">
+                <div>
+                  <span class="text-color-secondary">حالة الاستلام:</span>
+                  <Tag
+                    :value="RECEIVE_STATUS_LABELS[getReceiveStats(selectedInvoice.items).status]"
+                    :severity="
+                      RECEIVE_STATUS_SEVERITY[getReceiveStats(selectedInvoice.items).status]
+                    "
+                  />
+                </div>
+                <div>
+                  <span class="text-color-secondary">تم الاستلام:</span>
+                  {{ formatAmount(getReceiveStats(selectedInvoice.items).receivedAmount) }}
+                </div>
+                <div>
+                  <span class="text-color-secondary">متبقي الاستلام:</span>
+                  {{ formatAmount(getReceiveStats(selectedInvoice.items).remainingAmount) }}
+                </div>
               </div>
-              <div>
-                <span class="text-color-secondary">متبقي الاستلام:</span>
-                {{ formatAmount(getReceiveStats(selectedInvoice.items).remainingAmount) }}
+              <div class="flex gap-2 flex-wrap">
+                <Button
+                  v-if="selectedInvoice.status === 'unpaid'"
+                  label="تعديل"
+                  icon="pi pi-pencil"
+                  size="small"
+                  @click="openEditInvoice(selectedInvoice)"
+                />
+                <Button
+                  v-if="selectedInvoice.status === 'unpaid'"
+                  label="حذف"
+                  icon="pi pi-trash"
+                  severity="danger"
+                  size="small"
+                  @click="confirmDeleteInvoice(selectedInvoice)"
+                />
+                <Button
+                  v-if="selectedInvoice.status === 'unpaid' || selectedInvoice.status === 'partial'"
+                  label="إضافة دفعة"
+                  icon="pi pi-plus"
+                  size="small"
+                  @click="openAddPayment"
+                />
+              </div>
+              <div v-if="selectedInvoice.items?.length" class="invoice-details">
+                <h4 class="mt-0 mb-2 text-base">الأصناف</h4>
+                <DataTable
+                  :value="selectedInvoice.items"
+                  size="small"
+                  class="p-datatable-sm"
+                  show-gridlines
+                >
+                  <Column field="product_name" header="المنتج">
+                    <template #body="{ data: item }">
+                      <span>{{ item.product?.name ?? item.product_name ?? '—' }}</span>
+                      <Tag
+                        v-if="item.is_received"
+                        value="تم الاستلام"
+                        severity="success"
+                        class="mr-2"
+                      />
+                    </template>
+                  </Column>
+                  <Column field="quantity" header="الكمية" />
+                  <Column field="unit_price" header="سعر الوحدة">
+                    <template #body="{ data: item }">{{ formatAmount(item.unit_price) }}</template>
+                  </Column>
+                  <Column field="total_price" header="المجموع">
+                    <template #body="{ data: item }">{{
+                      formatAmount(item.total_price ?? item.quantity * item.unit_price)
+                    }}</template>
+                  </Column>
+                  <Column header="الإجراءات" style="width: 140px">
+                    <template #body="{ data: item }">
+                      <Button
+                        v-if="!item.is_received && item.id"
+                        label="استلام"
+                        icon="pi pi-box"
+                        text
+                        size="small"
+                        severity="secondary"
+                        :loading="receivingItemId === item.id"
+                        @click="onReceiveItem(selectedInvoice, item)"
+                      />
+                      <Button
+                        v-else-if="item.is_received && item.id"
+                        label="تراجع"
+                        icon="pi pi-undo"
+                        text
+                        size="small"
+                        severity="warn"
+                        :loading="receivingItemId === item.id"
+                        @click="onUnreceiveItem(selectedInvoice, item)"
+                      />
+                    </template>
+                  </Column>
+                </DataTable>
+              </div>
+              <div class="invoice-details">
+                <h4 class="mt-0 mb-2 text-base">الدفعات</h4>
+                <DataTable
+                  v-if="selectedInvoice.payments?.length"
+                  :value="selectedInvoice.payments"
+                  size="small"
+                  class="p-datatable-sm"
+                  show-gridlines
+                >
+                  <Column field="date" header="التاريخ" />
+                  <Column field="amount" header="المبلغ">
+                    <template #body="{ data: pmt }">{{ formatAmount(pmt.amount) }}</template>
+                  </Column>
+                  <Column header="الحساب">
+                    <template #body="{ data: pmt }">{{ pmt.account?.name ?? '—' }}</template>
+                  </Column>
+                  <Column field="description" header="الوصف">
+                    <template #body="{ data: pmt }">{{ pmt.description ?? '—' }}</template>
+                  </Column>
+                  <Column header="الإجراءات" style="width: 100px">
+                    <template #body="{ data: pmt }">
+                      <Button icon="pi pi-pencil" text size="small" @click="openEditPayment(pmt)" />
+                      <Button
+                        icon="pi pi-trash"
+                        text
+                        size="small"
+                        severity="danger"
+                        @click="confirmDeletePayment(pmt)"
+                      />
+                    </template>
+                  </Column>
+                </DataTable>
+                <p v-else class="text-color-secondary m-0">لا توجد دفعات</p>
+              </div>
+              <div
+                v-if="!(selectedInvoice.items?.length || selectedInvoice.payments?.length)"
+                class="text-color-secondary text-sm"
+              >
+                لا توجد تفاصيل إضافية
               </div>
             </div>
-            <div class="flex gap-2 flex-wrap">
-              <Button
-                v-if="selectedInvoice.status === 'unpaid'"
-                label="تعديل"
-                icon="pi pi-pencil"
-                size="small"
-                @click="openEditInvoice(selectedInvoice)"
-              />
-              <Button
-                v-if="selectedInvoice.status === 'unpaid'"
-                label="حذف"
-                icon="pi pi-trash"
-                severity="danger"
-                size="small"
-                @click="confirmDeleteInvoice(selectedInvoice)"
-              />
-              <Button
-                v-if="selectedInvoice.status === 'unpaid' || selectedInvoice.status === 'partial'"
-                label="إضافة دفعة"
-                icon="pi pi-plus"
-                size="small"
-                @click="openAddPayment"
-              />
-            </div>
-            <div v-if="selectedInvoice.items?.length" class="invoice-details">
-              <h4 class="mt-0 mb-2 text-base">الأصناف</h4>
-              <DataTable
-                :value="selectedInvoice.items"
-                size="small"
-                class="p-datatable-sm"
-                show-gridlines
-              >
-                <Column field="product_name" header="المنتج">
-                  <template #body="{ data: item }">
-                    <span>{{ item.product?.name ?? item.product_name ?? '—' }}</span>
-                    <Tag
-                      v-if="item.is_received"
-                      value="تم الاستلام"
-                      severity="success"
-                      class="mr-2"
-                    />
-                  </template>
-                </Column>
-                <Column field="quantity" header="الكمية" />
-                <Column field="unit_price" header="سعر الوحدة">
-                  <template #body="{ data: item }">{{ formatAmount(item.unit_price) }}</template>
-                </Column>
-                <Column field="total_price" header="المجموع">
-                  <template #body="{ data: item }">{{
-                    formatAmount(item.total_price ?? item.quantity * item.unit_price)
-                  }}</template>
-                </Column>
-                <Column header="الإجراءات" style="width: 140px">
-                  <template #body="{ data: item }">
-                    <Button
-                      v-if="!item.is_received && item.id"
-                      label="استلام"
-                      icon="pi pi-box"
-                      text
-                      size="small"
-                      severity="secondary"
-                      :loading="receivingItemId === item.id"
-                      @click="onReceiveItem(selectedInvoice, item)"
-                    />
-                    <Button
-                      v-else-if="item.is_received && item.id"
-                      label="تراجع"
-                      icon="pi pi-undo"
-                      text
-                      size="small"
-                      severity="warn"
-                      :loading="receivingItemId === item.id"
-                      @click="onUnreceiveItem(selectedInvoice, item)"
-                    />
-                  </template>
-                </Column>
-              </DataTable>
-            </div>
-            <div class="invoice-details">
-              <h4 class="mt-0 mb-2 text-base">الدفعات</h4>
-              <DataTable
-                v-if="selectedInvoice.payments?.length"
-                :value="selectedInvoice.payments"
-                size="small"
-                class="p-datatable-sm"
-                show-gridlines
-              >
-                <Column field="date" header="التاريخ" />
-                <Column field="amount" header="المبلغ">
-                  <template #body="{ data: pmt }">{{ formatAmount(pmt.amount) }}</template>
-                </Column>
-                <Column header="الحساب">
-                  <template #body="{ data: pmt }">{{
-                    pmt.account?.name ?? pmt.financial_account?.name ?? '—'
-                  }}</template>
-                </Column>
-                <Column field="description" header="الوصف">
-                  <template #body="{ data: pmt }">{{ pmt.description ?? '—' }}</template>
-                </Column>
-                <Column header="الإجراءات" style="width: 100px">
-                  <template #body="{ data: pmt }">
-                    <Button icon="pi pi-pencil" text size="small" @click="openEditPayment(pmt)" />
-                    <Button
-                      icon="pi pi-trash"
-                      text
-                      size="small"
-                      severity="danger"
-                      @click="confirmDeletePayment(pmt)"
-                    />
-                  </template>
-                </Column>
-              </DataTable>
-              <p v-else class="text-color-secondary m-0">لا توجد دفعات</p>
-            </div>
-            <div
-              v-if="!(selectedInvoice.items?.length || selectedInvoice.payments?.length)"
-              class="text-color-secondary text-sm"
-            >
-              لا توجد تفاصيل إضافية
+
+            <div class="invoice-print-layout print-only">
+              <header class="invoice-print-header">
+                <div class="invoice-print-brand">فاتورة شراء</div>
+                <h1 class="invoice-print-title">فاتورة رقم {{ selectedInvoice.invoice_number }}</h1>
+                <p class="invoice-print-meta m-0">المورد: {{ supplier?.name ?? '—' }}</p>
+                <p class="invoice-print-meta m-0">التاريخ: {{ selectedInvoice.invoice_date }}</p>
+                <p class="invoice-print-meta m-0">النوع: {{ typeLabel(selectedInvoice.type) }}</p>
+                <p class="invoice-print-meta m-0">
+                  الحالة: {{ statusLabel(selectedInvoice.status) }}
+                </p>
+                <p class="invoice-print-meta m-0">تاريخ الإصدار: {{ issuedAtLabel }}</p>
+                <div class="invoice-print-rule" />
+              </header>
+
+              <section class="invoice-print-section">
+                <h4 class="invoice-print-h4">الأصناف</h4>
+                <table v-if="selectedInvoice.items?.length" class="invoice-print-table">
+                  <thead>
+                    <tr>
+                      <th>المنتج</th>
+                      <th>الكمية</th>
+                      <th>سعر الوحدة</th>
+                      <th>المجموع</th>
+                      <th>الاستلام</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(item, idx) in selectedInvoice.items" :key="item.id ?? idx">
+                      <td>{{ item.product?.name ?? item.product_name ?? '—' }}</td>
+                      <td>{{ item.quantity }}</td>
+                      <td>{{ formatAmount(item.unit_price) }}</td>
+                      <td>
+                        {{ formatAmount(item.total_price ?? item.quantity * item.unit_price) }}
+                      </td>
+                      <td>{{ item.is_received ? 'تم' : 'لا' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="text-color-secondary m-0">لا توجد أصناف</p>
+              </section>
+
+              <section class="invoice-print-section">
+                <h4 class="invoice-print-h4">الدفعات</h4>
+                <table v-if="selectedInvoice.payments?.length" class="invoice-print-table">
+                  <thead>
+                    <tr>
+                      <th>التاريخ</th>
+                      <th>المبلغ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(pmt, idx) in selectedInvoice.payments" :key="pmt.id ?? idx">
+                      <td>{{ pmt.date }}</td>
+                      <td>{{ formatAmount(pmt.amount) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="text-color-secondary m-0">لا توجد دفعات</p>
+              </section>
+
+              <footer class="invoice-print-totals">
+                <p class="m-0">
+                  <strong>الإجمالي:</strong> {{ formatAmount(selectedInvoice.total_amount) }}
+                </p>
+                <p class="m-0">
+                  <strong>المدفوع:</strong> {{ formatAmount(selectedInvoice.paid_amount) }}
+                </p>
+                <p class="m-0">
+                  <strong>المتبقي:</strong>
+                  {{
+                    formatAmount(
+                      Math.max(0, selectedInvoice.total_amount - selectedInvoice.paid_amount),
+                    )
+                  }}
+                </p>
+              </footer>
             </div>
           </div>
         </Dialog>
@@ -866,3 +1034,112 @@ onMounted(async () => {
     </Dialog>
   </div>
 </template>
+
+<style scoped>
+.print-only {
+  display: none;
+}
+
+.purchase-invoice-doc--pdf-export .print-only {
+  display: block;
+}
+
+.purchase-invoice-doc--pdf-export .invoice-screen,
+.purchase-invoice-doc--pdf-export .no-print {
+  display: none !important;
+}
+
+.invoice-print-layout {
+  direction: rtl;
+}
+
+.invoice-print-brand {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #718096;
+}
+
+.invoice-print-title {
+  font-size: 1.25rem;
+  margin: 0.5rem 0;
+  color: #1a202c;
+}
+
+.invoice-print-meta {
+  font-size: 0.875rem;
+  color: #4a5568;
+}
+
+.invoice-print-rule {
+  height: 1px;
+  background: #e2e8f0;
+  margin-top: 1rem;
+}
+
+.invoice-print-section {
+  margin-bottom: 1.25rem;
+}
+
+.invoice-print-h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+}
+
+.invoice-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.invoice-print-table th,
+.invoice-print-table td {
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem 0.75rem;
+  text-align: right;
+}
+
+.invoice-print-table thead {
+  background: #f7fafc;
+}
+
+.invoice-print-totals {
+  margin-top: 1rem;
+  padding: 1rem 0.5rem 0;
+  border-top: 2px solid #e2e8f0;
+}
+
+.invoice-print-totals p {
+  margin: 0.25rem 0;
+}
+</style>
+
+<style>
+/* طباعة: إخفاء واجهة الحوار وعرض نسخة الفاتورة المنسقة */
+@media print {
+  .p-dialog-mask {
+    display: none !important;
+  }
+
+  .invoice-details-dialog .p-dialog-header {
+    display: none !important;
+  }
+
+  .invoice-details-dialog .p-dialog-content {
+    padding: 1rem !important;
+  }
+}
+
+@media print {
+  .invoice-screen {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+</style>

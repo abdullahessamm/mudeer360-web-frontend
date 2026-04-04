@@ -117,6 +117,14 @@ function goStatement(p: Partner) {
   router.push({ name: 'partner-statement', params: { id: String(p.id) } })
 }
 
+function goPrintStatement(p: Partner) {
+  router.push({
+    name: 'partner-statement',
+    params: { id: String(p.id) },
+    query: { print: '1' },
+  })
+}
+
 onMounted(async () => {
   try {
     await accountsStore.fetchAll()
@@ -167,7 +175,7 @@ onMounted(async () => {
           <Column field="computed_balance" header="رصيد الشريك">
             <template #body="{ data }">{{ fmt(data.computed_balance) }}</template>
           </Column>
-          <Column header="" style="width: 220px">
+          <Column header="" style="width: 300px">
             <template #body="{ data }">
               <div class="flex gap-2 flex-wrap">
                 <Button
@@ -176,6 +184,14 @@ onMounted(async () => {
                   size="small"
                   outlined
                   @click="goStatement(data)"
+                />
+                <Button
+                  label="طباعة"
+                  icon="pi pi-print"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  @click="goPrintStatement(data)"
                 />
                 <Button
                   label="حركة"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import html2pdf from 'html2pdf.js'
 import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { formatDateLocal, getCurrentMonthRange } from '@/lib/date'
@@ -39,6 +40,17 @@ const isEditPayment = ref(false)
 const editingPaymentId = ref<number | null>(null)
 const paymentFormModel = ref<Partial<PaymentPayload> | null>(null)
 const dispensingItemId = ref<number | null>(null)
+
+const invoicePdfRoot = ref<HTMLElement | null>(null)
+const pdfExporting = ref(false)
+const issuedAtTimestamp = ref(Date.now())
+
+const issuedAtLabel = computed(() =>
+  new Date(issuedAtTimestamp.value).toLocaleString('ar-EG', {
+    dateStyle: 'long',
+    timeStyle: 'short',
+  }),
+)
 
 const chargeDialogVisible = ref(false)
 const chargeForm = ref({
@@ -192,6 +204,61 @@ function goBack() {
 
 function formatAmount(n: number) {
   return n.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+}
+
+function sanitizeFilename(name: string) {
+  return name.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'invoice'
+}
+
+function getSaleInvoicePdfOptions() {
+  const inv = selectedInvoice.value
+  if (!inv) return null
+  const customerName = inv.customer?.name ?? customer.value?.name ?? 'customer'
+  return {
+    margin: [10, 10, 10, 10] as [number, number, number, number],
+    filename: `${sanitizeFilename(`sale-${inv.invoice_number}-${customerName}`)}.pdf`,
+    image: { type: 'jpeg' as const, quality: 0.92 },
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+  }
+}
+
+async function printSaleInvoice() {
+  if (!invoicePdfRoot.value) return
+  const opt = getSaleInvoicePdfOptions()
+  if (!opt) return
+  issuedAtTimestamp.value = Date.now()
+  pdfExporting.value = true
+  await nextTick()
+  await nextTick()
+  try {
+    const blob = (await html2pdf().set(opt).from(invoicePdfRoot.value).outputPdf('blob')) as Blob
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    setTimeout(() => URL.revokeObjectURL(url), 120_000)
+  } catch {
+    showError('تعذّر إنشاء ملف PDF')
+  } finally {
+    pdfExporting.value = false
+  }
+}
+
+async function downloadSaleInvoicePdf() {
+  if (!invoicePdfRoot.value) return
+  const opt = getSaleInvoicePdfOptions()
+  if (!opt) return
+  issuedAtTimestamp.value = Date.now()
+  pdfExporting.value = true
+  await nextTick()
+  await nextTick()
+  try {
+    await html2pdf().set(opt).from(invoicePdfRoot.value).save()
+    showSuccess('تم تحميل ملف PDF')
+  } catch {
+    showError('تعذّر إنشاء ملف PDF')
+  } finally {
+    pdfExporting.value = false
+  }
 }
 
 async function openInvoiceDetails(invoice: SaleInvoice, openPaymentAfter = false) {
@@ -878,14 +945,41 @@ onMounted(async () => {
           :header="
             selectedInvoice ? `تفاصيل فاتورة ${selectedInvoice.invoice_number}` : 'تفاصيل الفاتورة'
           "
+          class="invoice-details-dialog"
           :modal="true"
-          :style="{ width: '600px' }"
+          :style="{ width: '100%', maxWidth: '800px', margin: '0 20px' }"
           @hide="closeDetailsDialog"
         >
           <div v-if="salesStore.showLoading" class="flex justify-content-center py-6">
             <i class="pi pi-spin pi-spinner text-3xl text-color-secondary"></i>
           </div>
-          <div v-else-if="selectedInvoice" class="flex flex-column gap-4">
+          <div
+            v-else-if="selectedInvoice"
+            ref="invoicePdfRoot"
+            class="sale-invoice-doc"
+            :class="{ 'sale-invoice-doc--pdf-export': pdfExporting }"
+          >
+            <div class="flex flex-wrap gap-2 mb-3 no-print">
+              <Button
+                label="طباعة"
+                icon="pi pi-print"
+                size="small"
+                outlined
+                :loading="pdfExporting"
+                :disabled="pdfExporting"
+                @click="printSaleInvoice"
+              />
+              <Button
+                label="تحميل PDF"
+                icon="pi pi-file-pdf"
+                size="small"
+                severity="secondary"
+                :loading="pdfExporting"
+                :disabled="pdfExporting"
+                @click="downloadSaleInvoicePdf"
+              />
+            </div>
+            <div class="invoice-screen flex flex-column gap-4">
             <div class="flex flex-wrap gap-2 mb-2">
               <Tag
                 severity="info"
@@ -1058,6 +1152,90 @@ onMounted(async () => {
             >
               لا توجد تفاصيل إضافية
             </div>
+            </div>
+
+            <div class="invoice-print-layout print-only">
+              <header class="invoice-print-header">
+                <div class="invoice-print-brand">فاتورة بيع</div>
+                <h1 class="invoice-print-title">
+                  فاتورة رقم {{ selectedInvoice.invoice_number }}
+                </h1>
+                <p class="invoice-print-meta m-0">
+                  العميل: {{ selectedInvoice.customer?.name ?? customer?.name ?? '—' }}
+                </p>
+                <p class="invoice-print-meta m-0">التاريخ: {{ selectedInvoice.invoice_date }}</p>
+                <p class="invoice-print-meta m-0">النوع: {{ typeLabel(selectedInvoice.type) }}</p>
+                <p class="invoice-print-meta m-0">
+                  الحالة: {{ statusLabel(selectedInvoice.status) }}
+                </p>
+                <p class="invoice-print-meta m-0">تاريخ الإصدار: {{ issuedAtLabel }}</p>
+                <div class="invoice-print-rule" />
+              </header>
+
+              <section class="invoice-print-section">
+                <h4 class="invoice-print-h4">الأصناف</h4>
+                <table v-if="selectedInvoice.items?.length" class="invoice-print-table">
+                  <thead>
+                    <tr>
+                      <th>المنتج</th>
+                      <th>الكمية</th>
+                      <th>سعر الوحدة</th>
+                      <th>المجموع</th>
+                      <th>الصرف</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(item, idx) in selectedInvoice.items" :key="item.id ?? idx">
+                      <td>{{ item.product?.name ?? item.product_name ?? '—' }}</td>
+                      <td>{{ item.quantity }}</td>
+                      <td>{{ formatAmount(item.unit_price) }}</td>
+                      <td>{{ formatAmount(item.total_price ?? item.quantity * item.unit_price) }}</td>
+                      <td>{{ item.is_dispensed ? 'تم' : 'لا' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="text-color-secondary m-0">لا توجد أصناف</p>
+              </section>
+
+              <section class="invoice-print-section">
+                <h4 class="invoice-print-h4">الدفعات</h4>
+                <table v-if="salesStore.payments.length" class="invoice-print-table">
+                  <thead>
+                    <tr>
+                      <th>التاريخ</th>
+                      <th>المبلغ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(pmt, idx) in salesStore.payments" :key="pmt.id ?? idx">
+                      <td>{{ pmt.date }}</td>
+                      <td>{{ formatAmount(pmt.amount) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p v-else class="text-color-secondary m-0">لا توجد دفعات</p>
+              </section>
+
+              <footer class="invoice-print-totals">
+                <p class="m-0">
+                  <strong>الإجمالي:</strong> {{ formatAmount(selectedInvoice.total_amount) }}
+                </p>
+                <p class="m-0">
+                  <strong>المدفوع:</strong> {{ formatAmount(selectedInvoice.paid_amount) }}
+                </p>
+                <p class="m-0">
+                  <strong>المتبقي:</strong>
+                  {{
+                    formatAmount(
+                      Math.max(
+                        0,
+                        selectedInvoice.total_amount - selectedInvoice.paid_amount,
+                      ),
+                    )
+                  }}
+                </p>
+              </footer>
+            </div>
           </div>
         </Dialog>
       </template>
@@ -1212,3 +1390,111 @@ onMounted(async () => {
     </Dialog>
   </div>
 </template>
+
+<style scoped>
+.print-only {
+  display: none;
+}
+
+.sale-invoice-doc--pdf-export .print-only {
+  display: block;
+}
+
+.sale-invoice-doc--pdf-export .invoice-screen,
+.sale-invoice-doc--pdf-export .no-print {
+  display: none !important;
+}
+
+.invoice-print-layout {
+  direction: rtl;
+}
+
+.invoice-print-brand {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #718096;
+}
+
+.invoice-print-title {
+  font-size: 1.25rem;
+  margin: 0.5rem 0;
+  color: #1a202c;
+}
+
+.invoice-print-meta {
+  font-size: 0.875rem;
+  color: #4a5568;
+}
+
+.invoice-print-rule {
+  height: 1px;
+  background: #e2e8f0;
+  margin-top: 1rem;
+}
+
+.invoice-print-section {
+  margin-bottom: 1.25rem;
+}
+
+.invoice-print-h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+}
+
+.invoice-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.invoice-print-table th,
+.invoice-print-table td {
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem 0.75rem;
+  text-align: right;
+}
+
+.invoice-print-table thead {
+  background: #f7fafc;
+}
+
+.invoice-print-totals {
+  margin-top: 1rem;
+  padding: 1rem 0.5rem 0;
+  border-top: 2px solid #e2e8f0;
+}
+
+.invoice-print-totals p {
+  margin: 0.25rem 0;
+}
+</style>
+
+<style>
+@media print {
+  .p-dialog-mask {
+    display: none !important;
+  }
+
+  .invoice-details-dialog .p-dialog-header {
+    display: none !important;
+  }
+
+  .invoice-details-dialog .p-dialog-content {
+    padding: 1rem !important;
+  }
+}
+
+@media print {
+  .invoice-screen {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+</style>

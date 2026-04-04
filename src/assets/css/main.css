@@ -29,3 +29,11 @@
 .product-row-low-stock td {
   border-inline-start: 3px solid #f59e0b;
 }
+
+/* طباعة: إخفاء عناصر الواجهة العامة (توست، حوار تأكيد، …) */
+@media print {
+  .p-toast,
+  .p-confirmdialog {
+    display: none !important;
+  }
+}

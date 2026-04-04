@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import SimpleBar from 'simplebar-vue'
+import 'simplebar-vue/dist/simplebar.min.css'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardStore } from '@/stores/dashboard'
@@ -38,9 +40,7 @@ const salesMenuItems = [
   { label: 'فواتير البيع', to: '/sales', icon: 'pi pi-shopping-cart' },
 ]
 
-const accountsMenuItems = [
-  { label: 'جاري الشركاء', to: '/partners', icon: 'pi pi-briefcase' },
-]
+const accountsMenuItems = [{ label: 'جاري الشركاء', to: '/partners', icon: 'pi pi-briefcase' }]
 
 const stockExpanded = ref(false)
 const assetsExpanded = ref(false)
@@ -105,7 +105,11 @@ const financialMenuItems = [
 
 const financialReportsMenuItems = [
   { label: 'قائمة الدخل', to: '/financial/reports/income', icon: 'pi pi-chart-bar' },
-  { label: 'التدفقات النقدية', to: '/financial/reports/cashflow', icon: 'pi pi-arrow-right-arrow-left' },
+  {
+    label: 'التدفقات النقدية',
+    to: '/financial/reports/cashflow',
+    icon: 'pi pi-arrow-right-arrow-left',
+  },
   { label: 'قائمة المركز المالي', to: '/financial/reports/balance-sheet', icon: 'pi pi-table' },
 ]
 
@@ -195,245 +199,301 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="sidebar-section">
-        <span class="sidebar-section-title">القائمة الرئيسية</span>
-        <nav class="sidebar-nav">
-          <button
-            v-for="item in mainMenuTop"
-            :key="item.to"
-            type="button"
-            :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
-            @click="router.push(item.to)"
-          >
-            <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-            <span>{{ item.label }}</span>
-          </button>
-
-          <div class="sidebar-group">
+      <SimpleBar class="sidebar-scroll" data-simplebar-direction="rtl">
+        <div class="sidebar-section">
+          <span class="sidebar-section-title">القائمة الرئيسية</span>
+          <nav class="sidebar-nav">
             <button
+              v-for="item in mainMenuTop"
+              :key="item.to"
               type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isAssetsSectionActive }"
-              @click="toggleAssetsGroup"
+              :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+              @click="router.push(item.to)"
             >
-              <i class="pi pi-building sidebar-icon"></i>
-              <span class="flex-1 text-right">الأصول</span>
-              <i
-                :class="[
-                  'pi sidebar-chevron',
-                  assetsExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
-                ]"
-              ></i>
+              <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+              <span>{{ item.label }}</span>
             </button>
-            <div v-show="assetsExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in assetsMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="router.push(item.to)"
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
 
-          <div class="sidebar-group">
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isAssetsSectionActive }"
+                @click="toggleAssetsGroup"
+              >
+                <i class="pi pi-building sidebar-icon"></i>
+                <span class="flex-1 text-right">الأصول</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    assetsExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': assetsExpanded }"
+                :inert="!assetsExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in assetsMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="router.push(item.to)"
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isStockSectionActive }"
+                @click="toggleStockGroup"
+              >
+                <i class="pi pi-box sidebar-icon"></i>
+                <span class="flex-1 text-right">المخزون</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    stockExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': stockExpanded }"
+                :inert="!stockExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in stockMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="router.push(item.to)"
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isPurchasingSectionActive }"
+                @click="togglePurchasingGroup"
+              >
+                <i class="pi pi-shopping-bag sidebar-icon"></i>
+                <span class="flex-1 text-right">المشتريات</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    purchasingExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': purchasingExpanded }"
+                :inert="!purchasingExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in purchasingMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="router.push(item.to)"
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isSalesSectionActive }"
+                @click="toggleSalesGroup"
+              >
+                <i class="pi pi-chart-line sidebar-icon"></i>
+                <span class="flex-1 text-right">المبيعات</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    salesExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': salesExpanded }"
+                :inert="!salesExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in salesMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="router.push(item.to)"
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isAccountsSectionActive }"
+                @click="toggleAccountsGroup"
+              >
+                <i class="pi pi-book sidebar-icon"></i>
+                <span class="flex-1 text-right">الحسابات</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    accountsExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': accountsExpanded }"
+                :inert="!accountsExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in accountsMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="router.push(item.to)"
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isFinancialSectionActive }"
+                @click="toggleFinancialGroup"
+              >
+                <i class="pi pi-wallet sidebar-icon"></i>
+                <span class="flex-1 text-right">المالية</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    financialExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': financialExpanded }"
+                :inert="!financialExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in financialMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="router.push(item.to)"
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                    <span class="sidebar-subsection-label">التقارير المالية</span>
+                    <button
+                      v-for="item in financialReportsMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="router.push(item.to)"
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <button
+              v-for="item in mainMenuBottom"
+              :key="item.to"
               type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isStockSectionActive }"
-              @click="toggleStockGroup"
+              :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+              @click="router.push(item.to)"
             >
-              <i class="pi pi-box sidebar-icon"></i>
-              <span class="flex-1 text-right">المخزون</span>
-              <i
-                :class="['pi sidebar-chevron', stockExpanded ? 'pi-chevron-up' : 'pi-chevron-down']"
-              ></i>
+              <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+              <span>{{ item.label }}</span>
             </button>
-            <div v-show="stockExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in stockMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="router.push(item.to)"
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="sidebar-group">
-            <button
-              type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isPurchasingSectionActive }"
-              @click="togglePurchasingGroup"
-            >
-              <i class="pi pi-shopping-bag sidebar-icon"></i>
-              <span class="flex-1 text-right">المشتريات</span>
-              <i
-                :class="[
-                  'pi sidebar-chevron',
-                  purchasingExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
-                ]"
-              ></i>
-            </button>
-            <div v-show="purchasingExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in purchasingMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="router.push(item.to)"
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="sidebar-group">
-            <button
-              type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isSalesSectionActive }"
-              @click="toggleSalesGroup"
-            >
-              <i class="pi pi-chart-line sidebar-icon"></i>
-              <span class="flex-1 text-right">المبيعات</span>
-              <i
-                :class="['pi sidebar-chevron', salesExpanded ? 'pi-chevron-up' : 'pi-chevron-down']"
-              ></i>
-            </button>
-            <div v-show="salesExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in salesMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="router.push(item.to)"
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="sidebar-group">
-            <button
-              type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isAccountsSectionActive }"
-              @click="toggleAccountsGroup"
-            >
-              <i class="pi pi-book sidebar-icon"></i>
-              <span class="flex-1 text-right">الحسابات</span>
-              <i
-                :class="[
-                  'pi sidebar-chevron',
-                  accountsExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
-                ]"
-              ></i>
-            </button>
-            <div v-show="accountsExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in accountsMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="router.push(item.to)"
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="sidebar-group">
-            <button
-              type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isFinancialSectionActive }"
-              @click="toggleFinancialGroup"
-            >
-              <i class="pi pi-wallet sidebar-icon"></i>
-              <span class="flex-1 text-right">المالية</span>
-              <i
-                :class="[
-                  'pi sidebar-chevron',
-                  financialExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
-                ]"
-              ></i>
-            </button>
-            <div v-show="financialExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in financialMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="router.push(item.to)"
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-              <span class="sidebar-subsection-label">التقارير المالية</span>
-              <button
-                v-for="item in financialReportsMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="router.push(item.to)"
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
-
-          <button
-            v-for="item in mainMenuBottom"
-            :key="item.to"
-            type="button"
-            :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
-            @click="router.push(item.to)"
-          >
-            <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-            <span>{{ item.label }}</span>
-          </button>
-        </nav>
-      </div>
+          </nav>
+        </div>
+      </SimpleBar>
     </aside>
 
     <!-- Mobile sidebar overlay -->
@@ -467,290 +527,346 @@ onUnmounted(() => {
           <i class="pi pi-times"></i>
         </button>
       </div>
-      <div class="sidebar-section">
-        <span class="sidebar-section-title">القائمة الرئيسية</span>
-        <nav class="sidebar-nav">
-          <button
-            v-for="item in mainMenuTop"
-            :key="item.to"
-            type="button"
-            :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
-            @click="
-              () => {
-                router.push(item.to)
-                closeSidebar()
-              }
-            "
-          >
-            <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-            <span>{{ item.label }}</span>
-          </button>
-
-          <div class="sidebar-group">
+      <SimpleBar class="sidebar-scroll" data-simplebar-direction="rtl">
+        <div class="sidebar-section">
+          <span class="sidebar-section-title">القائمة الرئيسية</span>
+          <nav class="sidebar-nav">
             <button
+              v-for="item in mainMenuTop"
+              :key="item.to"
               type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isStockSectionActive }"
-              @click="toggleStockGroup"
+              :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+              @click="
+                () => {
+                  router.push(item.to)
+                  closeSidebar()
+                }
+              "
             >
-              <i class="pi pi-box sidebar-icon"></i>
-              <span class="flex-1 text-right">المخزون</span>
-              <i
-                :class="['pi sidebar-chevron', stockExpanded ? 'pi-chevron-up' : 'pi-chevron-down']"
-              ></i>
+              <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+              <span>{{ item.label }}</span>
             </button>
-            <div v-show="stockExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in stockMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="
-                  () => {
-                    router.push(item.to)
-                    closeSidebar()
-                  }
-                "
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
 
-          <div class="sidebar-group">
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isStockSectionActive }"
+                @click="toggleStockGroup"
+              >
+                <i class="pi pi-box sidebar-icon"></i>
+                <span class="flex-1 text-right">المخزون</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    stockExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': stockExpanded }"
+                :inert="!stockExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in stockMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="
+                        () => {
+                          router.push(item.to)
+                          closeSidebar()
+                        }
+                      "
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isAssetsSectionActive }"
+                @click="toggleAssetsGroup"
+              >
+                <i class="pi pi-building sidebar-icon"></i>
+                <span class="flex-1 text-right">الأصول</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    assetsExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': assetsExpanded }"
+                :inert="!assetsExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in assetsMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="
+                        () => {
+                          router.push(item.to)
+                          closeSidebar()
+                        }
+                      "
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isPurchasingSectionActive }"
+                @click="togglePurchasingGroup"
+              >
+                <i class="pi pi-shopping-bag sidebar-icon"></i>
+                <span class="flex-1 text-right">المشتريات</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    purchasingExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': purchasingExpanded }"
+                :inert="!purchasingExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in purchasingMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="
+                        () => {
+                          router.push(item.to)
+                          closeSidebar()
+                        }
+                      "
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isSalesSectionActive }"
+                @click="toggleSalesGroup"
+              >
+                <i class="pi pi-chart-line sidebar-icon"></i>
+                <span class="flex-1 text-right">المبيعات</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    salesExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': salesExpanded }"
+                :inert="!salesExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in salesMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="
+                        () => {
+                          router.push(item.to)
+                          closeSidebar()
+                        }
+                      "
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isAccountsSectionActive }"
+                @click="toggleAccountsGroup"
+              >
+                <i class="pi pi-book sidebar-icon"></i>
+                <span class="flex-1 text-right">الحسابات</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    accountsExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': accountsExpanded }"
+                :inert="!accountsExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in accountsMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="
+                        () => {
+                          router.push(item.to)
+                          closeSidebar()
+                        }
+                      "
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sidebar-group">
+              <button
+                type="button"
+                class="sidebar-group-header"
+                :class="{ 'sidebar-item-active': isFinancialSectionActive }"
+                @click="toggleFinancialGroup"
+              >
+                <i class="pi pi-wallet sidebar-icon"></i>
+                <span class="flex-1 text-right">المالية</span>
+                <i
+                  :class="[
+                    'pi sidebar-chevron',
+                    financialExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
+                  ]"
+                ></i>
+              </button>
+              <div
+                class="sidebar-subnav-collapse"
+                :class="{ 'sidebar-subnav-collapse--open': financialExpanded }"
+                :inert="!financialExpanded"
+              >
+                <div class="sidebar-subnav-collapse__inner">
+                  <div class="sidebar-subnav">
+                    <button
+                      v-for="item in financialMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="
+                        () => {
+                          router.push(item.to)
+                          closeSidebar()
+                        }
+                      "
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                    <span class="sidebar-subsection-label">التقارير المالية</span>
+                    <button
+                      v-for="item in financialReportsMenuItems"
+                      :key="item.to"
+                      type="button"
+                      :class="[
+                        'sidebar-item',
+                        'sidebar-subitem',
+                        { 'sidebar-item-active': isActiveRoute(item.to) },
+                      ]"
+                      @click="
+                        () => {
+                          router.push(item.to)
+                          closeSidebar()
+                        }
+                      "
+                    >
+                      <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+                      <span>{{ item.label }}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <button
+              v-for="item in mainMenuBottom"
+              :key="item.to"
               type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isAssetsSectionActive }"
-              @click="toggleAssetsGroup"
+              :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
+              @click="
+                () => {
+                  router.push(item.to)
+                  closeSidebar()
+                }
+              "
             >
-              <i class="pi pi-building sidebar-icon"></i>
-              <span class="flex-1 text-right">الأصول</span>
-              <i
-                :class="[
-                  'pi sidebar-chevron',
-                  assetsExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
-                ]"
-              ></i>
+              <i :class="['pi', item.icon, 'sidebar-icon']"></i>
+              <span>{{ item.label }}</span>
             </button>
-            <div v-show="assetsExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in assetsMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="
-                  () => {
-                    router.push(item.to)
-                    closeSidebar()
-                  }
-                "
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="sidebar-group">
-            <button
-              type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isPurchasingSectionActive }"
-              @click="togglePurchasingGroup"
-            >
-              <i class="pi pi-shopping-bag sidebar-icon"></i>
-              <span class="flex-1 text-right">المشتريات</span>
-              <i
-                :class="[
-                  'pi sidebar-chevron',
-                  purchasingExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
-                ]"
-              ></i>
-            </button>
-            <div v-show="purchasingExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in purchasingMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="
-                  () => {
-                    router.push(item.to)
-                    closeSidebar()
-                  }
-                "
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="sidebar-group">
-            <button
-              type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isSalesSectionActive }"
-              @click="toggleSalesGroup"
-            >
-              <i class="pi pi-chart-line sidebar-icon"></i>
-              <span class="flex-1 text-right">المبيعات</span>
-              <i
-                :class="['pi sidebar-chevron', salesExpanded ? 'pi-chevron-up' : 'pi-chevron-down']"
-              ></i>
-            </button>
-            <div v-show="salesExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in salesMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="
-                  () => {
-                    router.push(item.to)
-                    closeSidebar()
-                  }
-                "
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="sidebar-group">
-            <button
-              type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isAccountsSectionActive }"
-              @click="toggleAccountsGroup"
-            >
-              <i class="pi pi-book sidebar-icon"></i>
-              <span class="flex-1 text-right">الحسابات</span>
-              <i
-                :class="[
-                  'pi sidebar-chevron',
-                  accountsExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
-                ]"
-              ></i>
-            </button>
-            <div v-show="accountsExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in accountsMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="
-                  () => {
-                    router.push(item.to)
-                    closeSidebar()
-                  }
-                "
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
-
-          <div class="sidebar-group">
-            <button
-              type="button"
-              class="sidebar-group-header"
-              :class="{ 'sidebar-item-active': isFinancialSectionActive }"
-              @click="toggleFinancialGroup"
-            >
-              <i class="pi pi-wallet sidebar-icon"></i>
-              <span class="flex-1 text-right">المالية</span>
-              <i
-                :class="[
-                  'pi sidebar-chevron',
-                  financialExpanded ? 'pi-chevron-up' : 'pi-chevron-down',
-                ]"
-              ></i>
-            </button>
-            <div v-show="financialExpanded" class="sidebar-subnav">
-              <button
-                v-for="item in financialMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="
-                  () => {
-                    router.push(item.to)
-                    closeSidebar()
-                  }
-                "
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-              <span class="sidebar-subsection-label">التقارير المالية</span>
-              <button
-                v-for="item in financialReportsMenuItems"
-                :key="item.to"
-                type="button"
-                :class="[
-                  'sidebar-item',
-                  'sidebar-subitem',
-                  { 'sidebar-item-active': isActiveRoute(item.to) },
-                ]"
-                @click="
-                  () => {
-                    router.push(item.to)
-                    closeSidebar()
-                  }
-                "
-              >
-                <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-                <span>{{ item.label }}</span>
-              </button>
-            </div>
-          </div>
-
-          <button
-            v-for="item in mainMenuBottom"
-            :key="item.to"
-            type="button"
-            :class="['sidebar-item', { 'sidebar-item-active': isActiveRoute(item.to) }]"
-            @click="
-              () => {
-                router.push(item.to)
-                closeSidebar()
-              }
-            "
-          >
-            <i :class="['pi', item.icon, 'sidebar-icon']"></i>
-            <span>{{ item.label }}</span>
-          </button>
-        </nav>
-      </div>
+          </nav>
+        </div>
+      </SimpleBar>
     </aside>
 
     <!-- Mobile menu button -->
@@ -881,10 +997,20 @@ onUnmounted(() => {
   color: #2d3748;
 }
 
-.sidebar-section {
+.sidebar-scroll {
   flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+/* Vertical track on the inner (left) edge of the sidebar, next to main content */
+.sidebar-scroll :deep(.simplebar-track.simplebar-vertical) {
+  right: auto !important;
+  left: 0;
+}
+
+.sidebar-section {
   padding: 1rem 0.75rem;
-  overflow-y: auto;
 }
 
 .sidebar-section-title {
@@ -915,30 +1041,55 @@ onUnmounted(() => {
   font-size: 0.9rem;
   text-align: right;
   cursor: pointer;
-  transition: all 0.2s;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
-.sidebar-item:hover {
-  background: #edf2f7;
-}
-
-.sidebar-item-active {
+/* hover: المظهر السابق للعنصر النشط (بطاقة بيضاء خفيفة) */
+.sidebar-item:hover:not(.sidebar-item-active) {
   background: white;
   color: #2d3748;
   font-weight: 600;
+  box-shadow: none;
+  transform: none;
+}
+
+/* active: المظهر السابق للـ hover (شريط لوني + تمييز) */
+.sidebar-item-active {
+  background: rgba(0, 140, 255, 0.09);
+  color: #1a202c;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 0 #008cff;
+  transform: translateX(-2px);
 }
 
 .sidebar-item-active:hover {
-  background: #f7fafc;
+  background: #f0f9ff;
 }
 
 .sidebar-icon {
   font-size: 1.125rem;
   color: #718096;
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.sidebar-item:hover:not(.sidebar-item-active) .sidebar-icon {
+  color: #008cff;
+  transform: none;
 }
 
 .sidebar-item-active .sidebar-icon {
   color: #008cff;
+  transform: scale(1.06);
+}
+
+.sidebar-item-active:hover .sidebar-icon {
+  color: #0077e6;
 }
 
 .sidebar-group {
@@ -960,27 +1111,66 @@ onUnmounted(() => {
   font-size: 0.9rem;
   text-align: right;
   cursor: pointer;
-  transition: all 0.2s;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
-.sidebar-group-header:hover {
-  background: #edf2f7;
-}
-
-.sidebar-group-header.sidebar-item-active {
+.sidebar-group-header:hover:not(.sidebar-item-active) {
   background: white;
   color: #2d3748;
   font-weight: 600;
+  box-shadow: none;
+  transform: none;
+}
+
+.sidebar-group-header:hover:not(.sidebar-item-active) .sidebar-icon {
+  color: #008cff;
+  transform: none;
+}
+
+.sidebar-group-header.sidebar-item-active {
+  background: rgba(0, 140, 255, 0.09);
+  color: #1a202c;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 0 #008cff;
+  transform: translateX(-2px);
+}
+
+.sidebar-group-header.sidebar-item-active:hover {
+  background: #f0f9ff;
 }
 
 .sidebar-group-header.sidebar-item-active .sidebar-icon {
   color: #008cff;
+  transform: scale(1.06);
+}
+
+.sidebar-group-header.sidebar-item-active:hover .sidebar-icon {
+  color: #0077e6;
 }
 
 .sidebar-chevron {
   font-size: 0.75rem;
   color: #a0aec0;
   flex-shrink: 0;
+}
+
+.sidebar-subnav-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-subnav-collapse--open {
+  grid-template-rows: 1fr;
+}
+
+.sidebar-subnav-collapse__inner {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar-subnav {
@@ -995,10 +1185,34 @@ onUnmounted(() => {
 .sidebar-subitem {
   font-size: 0.85rem;
   padding: 0.5rem 0.75rem 0.5rem 1rem !important;
+  border-radius: 0.5rem;
 }
 
 .sidebar-subitem .sidebar-icon {
   font-size: 1rem;
+}
+
+/* روابط فرعية نشطة — زوايا دائرية؛ لون أساسي + خلفية شفافة */
+.sidebar-item.sidebar-subitem.sidebar-item-active {
+  background: color-mix(in srgb, var(--p-primary-color) 10%, transparent);
+  color: var(--p-primary-color);
+  font-weight: 600;
+  box-shadow: none;
+  transform: none;
+  border: none;
+}
+
+.sidebar-item.sidebar-subitem.sidebar-item-active:hover {
+  background: color-mix(in srgb, var(--p-primary-color) 16%, transparent);
+}
+
+.sidebar-item.sidebar-subitem.sidebar-item-active .sidebar-icon {
+  color: var(--p-primary-color);
+  transform: scale(1.04);
+}
+
+.sidebar-item.sidebar-subitem.sidebar-item-active:hover .sidebar-icon {
+  color: var(--p-primary-hover-color);
 }
 
 .sidebar-subsection-label {
@@ -1008,6 +1222,34 @@ onUnmounted(() => {
   color: #a0aec0;
   padding: 0.5rem 0.75rem 0.25rem;
   margin-top: 0.25rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-item,
+  .sidebar-group-header,
+  .sidebar-icon {
+    transition: none;
+  }
+
+  .sidebar-subnav-collapse {
+    transition: none;
+  }
+
+  .sidebar-item-active,
+  .sidebar-item-active:hover,
+  .sidebar-group-header.sidebar-item-active,
+  .sidebar-group-header.sidebar-item-active:hover {
+    transform: none;
+  }
+
+  .sidebar-item-active .sidebar-icon,
+  .sidebar-item-active:hover .sidebar-icon,
+  .sidebar-group-header.sidebar-item-active .sidebar-icon,
+  .sidebar-group-header.sidebar-item-active:hover .sidebar-icon,
+  .sidebar-item.sidebar-subitem.sidebar-item-active .sidebar-icon,
+  .sidebar-item.sidebar-subitem.sidebar-item-active:hover .sidebar-icon {
+    transform: none;
+  }
 }
 
 /* Mobile sidebar */
@@ -1258,5 +1500,29 @@ onUnmounted(() => {
 .footer-text {
   font-size: 0.8rem;
   color: #718096;
+}
+
+@media print {
+  aside.sidebar,
+  .sidebar-overlay,
+  .mobile-menu-btn,
+  .main-header,
+  .main-footer {
+    display: none !important;
+  }
+
+  .dashboard-layout {
+    background: #fff !important;
+    min-height: auto !important;
+  }
+
+  .main-content {
+    margin-right: 0 !important;
+  }
+
+  .main-body {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
 }
 </style>

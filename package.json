@@ -21,11 +21,13 @@
     "@vuelidate/validators": "^2.0.4",
     "axios": "^1.13.6",
     "chart.js": "^4.5.1",
+    "html2pdf.js": "^0.14.0",
     "pinia": "^3.0.4",
     "primeflex": "^4.0.0",
     "primeicons": "^7.0.0",
     "primelocale": "^2.3.1",
     "primevue": "^4.5.4",
+    "simplebar-vue": "^2.4.2",
     "vue": "^3.5.29",
     "vue-router": "^5.0.3",
     "xlsx": "^0.18.5"

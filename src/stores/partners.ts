@@ -82,11 +82,18 @@ export const usePartnersStore = defineStore('partners', () => {
     }
   }
 
-  async function getStatement(partnerId: number) {
+  async function getStatement(
+    partnerId: number,
+    params?: { date_from?: string; date_to?: string },
+  ) {
     loading.value = true
     error.value = null
     try {
-      const { data } = await apiClient.get(`/api/partners/${partnerId}/statement`)
+      const body: Record<string, string> = {}
+      if (params?.date_from) body.date_from = params.date_from
+      if (params?.date_to) body.date_to = params.date_to
+
+      const { data } = await apiClient.post(`/api/partners/${partnerId}/statement`, body)
       return unwrapPayload<PartnerStatementPayload>(data)
     } catch (e: unknown) {
       error.value = getErrorMessage(e, 'فشل تحميل كشف الحساب')
