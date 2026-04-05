@@ -196,6 +196,19 @@ export const employeeTransactionRules = {
   },
 }
 
+/** EmployeeAttendance - store/update */
+export const employeeAttendanceRules = {
+  employee_id: {
+    required,
+  },
+  work_date: {
+    required,
+  },
+  notes: {
+    maxLength: maxLength(2000),
+  },
+}
+
 /** Payroll - StorePayrollRequest */
 export const payrollRules = {
   employee_id: {

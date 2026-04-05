@@ -8,6 +8,8 @@ import type { PaginatedPayload } from '@/types'
 export interface EmployeeTransactionFilters {
   employee_id?: number
   type?: 'bonus' | 'deduction' | 'loan'
+  date_from?: string
+  date_to?: string
 }
 
 export const useEmployeeTransactionsStore = defineStore('employeeTransactions', () => {
@@ -32,6 +34,8 @@ export const useEmployeeTransactionsStore = defineStore('employeeTransactions', 
       const params: Record<string, number | string> = { page, per_page: perPageCount }
       if (filters?.employee_id) params.employee_id = filters.employee_id
       if (filters?.type) params.type = filters.type
+      if (filters?.date_from) params.date_from = filters.date_from
+      if (filters?.date_to) params.date_to = filters.date_to
       const { data } = await apiClient.get('/api/employee-transactions', { params })
       const payload = parsePaginatedResponse<EmployeeTransaction>(data)
       items.value = payload.data ?? []

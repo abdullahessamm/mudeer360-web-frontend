@@ -6,10 +6,12 @@ import { formatDateLocal } from '@/lib/date'
 import { showError, showSuccess } from '@/composables/useToast'
 import { useEmployeesStore } from '@/stores/employees'
 import { useEmployeeTransactionsStore } from '@/stores/employeeTransactions'
+import { useEmployeeAttendancesStore } from '@/stores/employeeAttendances'
 import { usePayrollsStore } from '@/stores/payrolls'
 import { useFinancialAccountsStore } from '@/stores/financialAccounts'
 import EmployeeTransactionForm from '@/components/forms/EmployeeTransactionForm.vue'
-import type { Employee, EmployeeTransaction, Payroll } from '@/types'
+import EmployeeAttendanceForm from '@/components/forms/EmployeeAttendanceForm.vue'
+import type { EmployeeAttendance, EmployeeTransaction, Payroll } from '@/types'
 
 const monthLabels: Record<number, string> = {
   1: 'يناير',
@@ -31,6 +33,7 @@ const router = useRouter()
 const confirm = useConfirm()
 const employeesStore = useEmployeesStore()
 const transactionsStore = useEmployeeTransactionsStore()
+const attendancesStore = useEmployeeAttendancesStore()
 const payrollsStore = usePayrollsStore()
 const accountsStore = useFinancialAccountsStore()
 
@@ -38,7 +41,8 @@ const employeeId = computed(() => Number(route.params.id))
 const employee = computed(() => employeesStore.currentEmployee)
 
 watch(
-  () => [transactionsStore.error, payrollsStore.error].join(','),
+  () =>
+    [transactionsStore.error, payrollsStore.error, attendancesStore.error].join(','),
   () => {
     if (transactionsStore.error) {
       showError(transactionsStore.error)
@@ -48,6 +52,10 @@ watch(
       showError(payrollsStore.error)
       payrollsStore.clearError()
     }
+    if (attendancesStore.error) {
+      showError(attendancesStore.error)
+      attendancesStore.clearError()
+    }
   },
 )
 
@@ -55,6 +63,11 @@ const transactionDialogVisible = ref(false)
 const transactionFormModel = ref<Partial<EmployeeTransaction> | null>(null)
 const isTransactionEdit = ref(false)
 const editingTransactionId = ref<number | null>(null)
+
+const attendanceDialogVisible = ref(false)
+const attendanceFormModel = ref<Partial<EmployeeAttendance> | null>(null)
+const isAttendanceEdit = ref(false)
+const editingAttendanceId = ref<number | null>(null)
 
 const createPayrollDialogVisible = ref(false)
 const createPayrollModel = ref({ employee_id: 0, month: 1, year: new Date().getFullYear() })
@@ -65,6 +78,93 @@ const payPayrollModel = ref({
   date: formatDateLocal(new Date()),
 })
 const payrollToPay = ref<Payroll | null>(null)
+
+const DETAIL_TAB_KEYS = ['transactions', 'attendance', 'payrolls'] as const
+type DetailTabKey = (typeof DETAIL_TAB_KEYS)[number]
+
+function parseTabQuery(raw: unknown): DetailTabKey {
+  const s = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw[0] : ''
+  return DETAIL_TAB_KEYS.includes(s as DetailTabKey) ? (s as DetailTabKey) : 'transactions'
+}
+
+function routeQueryTabString(): string | undefined {
+  const q = route.query.tab
+  if (q === undefined || q === null) return undefined
+  if (Array.isArray(q)) return q[0] ?? undefined
+  return q
+}
+
+const detailTab = ref<DetailTabKey>(parseTabQuery(route.query.tab))
+
+watch(
+  () => route.query.tab,
+  () => {
+    const next = parseTabQuery(route.query.tab)
+    if (detailTab.value !== next) detailTab.value = next
+  },
+)
+
+watch(
+  detailTab,
+  (tab) => {
+    if (routeQueryTabString() === tab) return
+    router.replace({ query: { ...route.query, tab } })
+  },
+  { flush: 'post', immediate: true },
+)
+
+/** DatePicker شهر/سنة → date_from / date_to (حضور + معاملات) */
+const monthPickerMinDate = computed(
+  () => new Date(new Date().getFullYear() - 5, 0, 1),
+)
+const monthPickerMaxDate = computed(
+  () => new Date(new Date().getFullYear() + 2, 11, 31),
+)
+
+const attendanceMonthPicker = ref<Date>(
+  new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+)
+
+const transactionMonthPicker = ref<Date>(
+  new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+)
+
+function monthRangeForPicker(raw: Date | null | undefined) {
+  const d =
+    raw instanceof Date && !Number.isNaN(raw.getTime())
+      ? raw
+      : new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  const start = new Date(y, m - 1, 1)
+  const end = new Date(y, m, 0)
+  return {
+    date_from: formatDateLocal(start),
+    date_to: formatDateLocal(end),
+  }
+}
+
+function getAttendanceFetchFilters() {
+  return {
+    employee_id: employeeId.value,
+    ...monthRangeForPicker(attendanceMonthPicker.value),
+  }
+}
+
+function getTransactionFetchFilters() {
+  return {
+    employee_id: employeeId.value,
+    ...monthRangeForPicker(transactionMonthPicker.value),
+  }
+}
+
+function onAttendanceFilterChange() {
+  attendancesStore.fetchPage(1, attendancesStore.perPage, getAttendanceFetchFilters())
+}
+
+function onTransactionFilterChange() {
+  transactionsStore.fetchPage(1, transactionsStore.perPage, getTransactionFetchFilters())
+}
 
 const payDateValue = computed({
   get: () =>
@@ -95,8 +195,79 @@ async function loadData() {
     employeesStore.fetchAllForSelect(),
     accountsStore.fetchAll(),
   ])
-  await transactionsStore.fetchPage(1, 15, { employee_id: employeeId.value })
+  await transactionsStore.fetchPage(1, 15, getTransactionFetchFilters())
+  await attendancesStore.fetchPage(1, 15, getAttendanceFetchFilters())
   await payrollsStore.fetchPage(1, 15, { employee_id: employeeId.value })
+}
+
+function formatTimeDisplay(t: string | null) {
+  return t ?? '—'
+}
+
+function openAddAttendance() {
+  isAttendanceEdit.value = false
+  editingAttendanceId.value = null
+  attendanceFormModel.value = null
+  attendanceDialogVisible.value = true
+}
+
+function openEditAttendance(row: EmployeeAttendance) {
+  isAttendanceEdit.value = true
+  editingAttendanceId.value = row.id
+  attendanceFormModel.value = { ...row }
+  attendanceDialogVisible.value = true
+}
+
+async function onAttendanceSubmit(payload: {
+  employee_id: number
+  work_date: string
+  check_in: string | null
+  check_out: string | null
+  notes: string | null
+}) {
+  try {
+    if (isAttendanceEdit.value && editingAttendanceId.value !== null) {
+      await attendancesStore.update(editingAttendanceId.value, payload)
+      showSuccess('تم تحديث سجل الحضور بنجاح')
+    } else {
+      await attendancesStore.create(payload)
+      showSuccess('تم تسجيل الحضور بنجاح')
+    }
+    attendanceDialogVisible.value = false
+    await attendancesStore.fetchPage(1, attendancesStore.perPage, getAttendanceFetchFilters())
+  } catch {
+    // toast
+  }
+}
+
+function confirmDeleteAttendance(row: EmployeeAttendance) {
+  confirm.require({
+    message: `حذف سجل الحضور ليوم ${row.work_date}؟`,
+    header: 'تأكيد الحذف',
+    icon: 'pi pi-exclamation-triangle',
+    rejectLabel: 'إلغاء',
+    acceptLabel: 'حذف',
+    acceptClass: 'p-button-danger p-button-sm',
+    rejectClass: 'p-button-text p-button-secondary p-button-sm',
+    acceptIcon: 'pi pi-trash',
+    accept: async () => {
+      try {
+        await attendancesStore.remove(row.id)
+        showSuccess('تم حذف السجل')
+        await attendancesStore.fetchPage(
+          attendancesStore.currentPage,
+          attendancesStore.perPage,
+          getAttendanceFetchFilters(),
+        )
+      } catch {
+        // toast
+      }
+    },
+  })
+}
+
+function onAttendancePageChange(page: number) {
+  attendancesStore.fetchPage(page, attendancesStore.perPage, getAttendanceFetchFilters())
 }
 
 function openAddTransaction() {
@@ -142,9 +313,7 @@ async function onTransactionSubmit(payload: {
       showSuccess('تم إضافة المعاملة بنجاح')
     }
     transactionDialogVisible.value = false
-    await transactionsStore.fetchPage(1, transactionsStore.perPage, {
-      employee_id: employeeId.value,
-    })
+    await transactionsStore.fetchPage(1, transactionsStore.perPage, getTransactionFetchFilters())
     await employeesStore.fetchById(employeeId.value)
   } catch {
     // error shown via toast
@@ -165,9 +334,7 @@ function confirmDeleteTransaction(row: EmployeeTransaction) {
       try {
         await transactionsStore.remove(row.id)
         showSuccess('تم حذف المعاملة بنجاح')
-        await transactionsStore.fetchPage(1, transactionsStore.perPage, {
-          employee_id: employeeId.value,
-        })
+        await transactionsStore.fetchPage(1, transactionsStore.perPage, getTransactionFetchFilters())
         await employeesStore.fetchById(employeeId.value)
       } catch {
         // error shown via toast
@@ -251,7 +418,7 @@ function confirmDeletePayroll(row: Payroll) {
 }
 
 function onTransactionPageChange(page: number) {
-  transactionsStore.fetchPage(page, transactionsStore.perPage, { employee_id: employeeId.value })
+  transactionsStore.fetchPage(page, transactionsStore.perPage, getTransactionFetchFilters())
 }
 
 function onPayrollPageChange(page: number) {
@@ -282,210 +449,339 @@ onMounted(loadData)
         </div>
       </div>
 
-      <!-- Transactions -->
-      <Card class="mb-4">
-        <template #title>
-          <div class="flex justify-content-between align-items-center flex-wrap gap-2">
-            <span>المعاملات</span>
-            <Button
-              label="إضافة معاملة"
-              icon="pi pi-plus"
-              size="small"
-              @click="openAddTransaction"
-            />
-          </div>
-        </template>
-        <template #content>
-          <div v-if="transactionsStore.loading" class="flex justify-content-center py-4">
-            <i class="pi pi-spin pi-spinner text-2xl text-color-secondary"></i>
-          </div>
-          <DataTable
-            v-else-if="transactionsStore.items.length"
-            :value="transactionsStore.items"
-            data-key="id"
-            striped-rows
-            responsive-layout="scroll"
-            class="p-datatable-sm"
-          >
-            <Column field="date" header="التاريخ" style="width: 120px" />
-            <Column field="type" header="النوع" style="width: 100px">
-              <template #body="{ data }">
-                <Tag
-                  :value="typeLabel(data.type)"
-                  :severity="
-                    data.type === 'bonus' ? 'success' : data.type === 'deduction' ? 'warn' : 'info'
-                  "
+      <Tabs v-model:value="detailTab" class="employee-detail-tabs">
+        <TabList>
+          <Tab value="transactions">المعاملات</Tab>
+          <Tab value="attendance">الحضور والانصراف</Tab>
+          <Tab value="payrolls">كشوف الرواتب</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel value="transactions">
+            <div class="flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+              <div class="field m-0">
+                <label class="block text-sm text-color-secondary mb-1">الشهر والسنة</label>
+                <DatePicker
+                  v-model="transactionMonthPicker"
+                  view="month"
+                  date-format="mm/yy"
+                  :min-date="monthPickerMinDate"
+                  :max-date="monthPickerMaxDate"
+                  :manual-input="false"
+                  show-icon
+                  icon-display="input"
+                  class="w-15rem"
+                  @update:model-value="onTransactionFilterChange"
                 />
-              </template>
-            </Column>
-            <Column field="amount" header="المبلغ">
-              <template #body="{ data }">
-                {{ data.amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
-              </template>
-            </Column>
-            <Column field="description" header="الوصف">
-              <template #body="{ data }">{{ data.description ?? '—' }}</template>
-            </Column>
-            <Column header="الإجراءات" style="width: 140px">
-              <template #body="{ data }">
-                <Button
-                  icon="pi pi-pencil"
-                  text
-                  size="small"
-                  class="p-button-success"
-                  @click="openEditTransaction(data)"
-                />
-                <Button
-                  icon="pi pi-trash"
-                  text
-                  size="small"
-                  class="p-button-danger"
-                  @click="confirmDeleteTransaction(data)"
-                />
-              </template>
-            </Column>
-          </DataTable>
-          <p v-else class="text-color-secondary m-0 py-4">لا توجد معاملات</p>
-        </template>
-        <template v-if="transactionsStore.lastPage > 1" #footer>
-          <div class="flex justify-content-between align-items-center">
-            <span class="text-sm text-color-secondary">
-              عرض {{ transactionsStore.meta?.from ?? 0 }} - {{ transactionsStore.meta?.to ?? 0 }} من
-              {{ transactionsStore.total }}
-            </span>
-            <div class="flex gap-1">
+              </div>
               <Button
-                icon="pi pi-chevron-right"
-                text
+                label="إضافة معاملة"
+                icon="pi pi-plus"
                 size="small"
-                :disabled="transactionsStore.currentPage <= 1"
-                @click="onTransactionPageChange(transactionsStore.currentPage - 1)"
-              />
-              <span class="flex align-items-center px-2 text-sm">
-                {{ transactionsStore.currentPage }} / {{ transactionsStore.lastPage }}
-              </span>
-              <Button
-                icon="pi pi-chevron-left"
-                text
-                size="small"
-                :disabled="transactionsStore.currentPage >= transactionsStore.lastPage"
-                @click="onTransactionPageChange(transactionsStore.currentPage + 1)"
+                @click="openAddTransaction"
               />
             </div>
-          </div>
-        </template>
-      </Card>
+            <div v-if="transactionsStore.loading" class="flex justify-content-center py-4">
+              <i class="pi pi-spin pi-spinner text-2xl text-color-secondary"></i>
+            </div>
+            <DataTable
+              v-else-if="transactionsStore.items.length"
+              :value="transactionsStore.items"
+              data-key="id"
+              striped-rows
+              responsive-layout="scroll"
+              class="p-datatable-sm"
+            >
+              <Column field="date" header="التاريخ" style="width: 120px" />
+              <Column field="type" header="النوع" style="width: 100px">
+                <template #body="{ data }">
+                  <Tag
+                    :value="typeLabel(data.type)"
+                    :severity="
+                      data.type === 'bonus' ? 'success' : data.type === 'deduction' ? 'warn' : 'info'
+                    "
+                  />
+                </template>
+              </Column>
+              <Column field="amount" header="المبلغ">
+                <template #body="{ data }">
+                  {{ data.amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                </template>
+              </Column>
+              <Column field="description" header="الوصف">
+                <template #body="{ data }">{{ data.description ?? '—' }}</template>
+              </Column>
+              <Column header="الإجراءات" style="width: 140px">
+                <template #body="{ data }">
+                  <Button
+                    icon="pi pi-pencil"
+                    text
+                    size="small"
+                    class="p-button-success"
+                    @click="openEditTransaction(data)"
+                  />
+                  <Button
+                    icon="pi pi-trash"
+                    text
+                    size="small"
+                    class="p-button-danger"
+                    @click="confirmDeleteTransaction(data)"
+                  />
+                </template>
+              </Column>
+            </DataTable>
+            <p v-else class="text-color-secondary m-0 py-4">لا توجد معاملات</p>
+            <div
+              v-if="transactionsStore.lastPage > 1"
+              class="flex justify-content-between align-items-center border-top-1 surface-border pt-3 mt-3"
+            >
+              <span class="text-sm text-color-secondary">
+                عرض {{ transactionsStore.meta?.from ?? 0 }} - {{ transactionsStore.meta?.to ?? 0 }} من
+                {{ transactionsStore.total }}
+              </span>
+              <div class="flex gap-1">
+                <Button
+                  icon="pi pi-chevron-right"
+                  text
+                  size="small"
+                  :disabled="transactionsStore.currentPage <= 1"
+                  @click="onTransactionPageChange(transactionsStore.currentPage - 1)"
+                />
+                <span class="flex align-items-center px-2 text-sm">
+                  {{ transactionsStore.currentPage }} / {{ transactionsStore.lastPage }}
+                </span>
+                <Button
+                  icon="pi pi-chevron-left"
+                  text
+                  size="small"
+                  :disabled="transactionsStore.currentPage >= transactionsStore.lastPage"
+                  @click="onTransactionPageChange(transactionsStore.currentPage + 1)"
+                />
+              </div>
+            </div>
+          </TabPanel>
 
-      <!-- Payrolls -->
-      <Card>
-        <template #title>
-          <div class="flex justify-content-between align-items-center flex-wrap gap-2">
-            <span>كشوف الرواتب</span>
-            <Button
-              label="إنشاء كشف راتب"
-              icon="pi pi-plus"
-              size="small"
-              @click="openCreatePayroll"
-            />
-          </div>
-        </template>
-        <template #content>
-          <div v-if="payrollsStore.loading" class="flex justify-content-center py-4">
-            <i class="pi pi-spin pi-spinner text-2xl text-color-secondary"></i>
-          </div>
-          <DataTable
-            v-else-if="payrollsStore.items.length"
-            :value="payrollsStore.items"
-            data-key="id"
-            striped-rows
-            responsive-layout="scroll"
-            class="p-datatable-sm"
-          >
-            <Column header="الشهر/السنة" style="width: 140px">
-              <template #body="{ data }">{{ monthLabels[data.month] }} {{ data.year }}</template>
-            </Column>
-            <Column field="total_bonus" header="إجمالي المكافآت">
-              <template #body="{ data }">
-                {{ data.total_bonus.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
-              </template>
-            </Column>
-            <Column field="total_deductions" header="إجمالي الخصومات">
-              <template #body="{ data }">
-                {{ data.total_deductions.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
-              </template>
-            </Column>
-            <Column field="total_loans" header="إجمالي السلف">
-              <template #body="{ data }">
-                {{ data.total_loans.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
-              </template>
-            </Column>
-            <Column field="net_salary" header="صافي الراتب">
-              <template #body="{ data }">
-                {{ data.net_salary.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
-              </template>
-            </Column>
-            <Column field="status" header="الحالة" style="width: 100px">
-              <template #body="{ data }">
-                <Tag
-                  :value="statusLabel(data.status)"
-                  :severity="data.status === 'paid' ? 'success' : 'warn'"
+          <TabPanel value="attendance">
+            <div class="flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
+              <div class="field m-0">
+                <label class="block text-sm text-color-secondary mb-1">الشهر والسنة</label>
+                <DatePicker
+                  v-model="attendanceMonthPicker"
+                  view="month"
+                  date-format="mm/yy"
+                  :min-date="monthPickerMinDate"
+                  :max-date="monthPickerMaxDate"
+                  :manual-input="false"
+                  show-icon
+                  icon-display="input"
+                  class="w-15rem"
+                  @update:model-value="onAttendanceFilterChange"
                 />
-              </template>
-            </Column>
-            <Column header="الإجراءات" style="width: 180px">
-              <template #body="{ data }">
-                <Button
-                  v-if="data.status === 'pending'"
-                  label="صرف الراتب"
-                  icon="pi pi-wallet"
-                  text
-                  size="small"
-                  class="p-button-success"
-                  @click="openPayPayroll(data)"
-                />
-                <Button
-                  v-if="data.status === 'pending'"
-                  icon="pi pi-trash"
-                  text
-                  size="small"
-                  class="p-button-danger"
-                  @click="confirmDeletePayroll(data)"
-                />
-                <span v-if="data.status === 'paid'" class="text-sm text-color-secondary">—</span>
-              </template>
-            </Column>
-          </DataTable>
-          <p v-else class="text-color-secondary m-0 py-4">لا توجد كشوف رواتب</p>
-        </template>
-        <template v-if="payrollsStore.lastPage > 1" #footer>
-          <div class="flex justify-content-between align-items-center">
-            <span class="text-sm text-color-secondary">
-              عرض {{ payrollsStore.meta?.from ?? 0 }} - {{ payrollsStore.meta?.to ?? 0 }} من
-              {{ payrollsStore.total }}
-            </span>
-            <div class="flex gap-1">
+              </div>
               <Button
-                icon="pi pi-chevron-right"
-                text
+                label="تسجيل حضور"
+                icon="pi pi-plus"
                 size="small"
-                :disabled="payrollsStore.currentPage <= 1"
-                @click="onPayrollPageChange(payrollsStore.currentPage - 1)"
-              />
-              <span class="flex align-items-center px-2 text-sm">
-                {{ payrollsStore.currentPage }} / {{ payrollsStore.lastPage }}
-              </span>
-              <Button
-                icon="pi pi-chevron-left"
-                text
-                size="small"
-                :disabled="payrollsStore.currentPage >= payrollsStore.lastPage"
-                @click="onPayrollPageChange(payrollsStore.currentPage + 1)"
+                @click="openAddAttendance"
               />
             </div>
-          </div>
-        </template>
-      </Card>
+            <div v-if="attendancesStore.loading" class="flex justify-content-center py-4">
+              <i class="pi pi-spin pi-spinner text-2xl text-color-secondary"></i>
+            </div>
+            <DataTable
+              v-else-if="attendancesStore.items.length"
+              :value="attendancesStore.items"
+              data-key="id"
+              striped-rows
+              responsive-layout="scroll"
+              class="p-datatable-sm"
+            >
+              <Column field="work_date" header="اليوم" style="width: 120px" />
+              <Column header="الحضور" style="width: 100px">
+                <template #body="{ data }">{{ formatTimeDisplay(data.check_in) }}</template>
+              </Column>
+              <Column header="الانصراف" style="width: 100px">
+                <template #body="{ data }">{{ formatTimeDisplay(data.check_out) }}</template>
+              </Column>
+              <Column field="notes" header="ملاحظات">
+                <template #body="{ data }">{{ data.notes ?? '—' }}</template>
+              </Column>
+              <Column header="الإجراءات" style="width: 140px">
+                <template #body="{ data }">
+                  <Button
+                    icon="pi pi-pencil"
+                    text
+                    size="small"
+                    class="p-button-success"
+                    @click="openEditAttendance(data)"
+                  />
+                  <Button
+                    icon="pi pi-trash"
+                    text
+                    size="small"
+                    class="p-button-danger"
+                    @click="confirmDeleteAttendance(data)"
+                  />
+                </template>
+              </Column>
+            </DataTable>
+            <p v-else class="text-color-secondary m-0 py-4">لا توجد سجلات حضور</p>
+            <div
+              v-if="attendancesStore.lastPage > 1"
+              class="flex justify-content-between align-items-center border-top-1 surface-border pt-3 mt-3"
+            >
+              <span class="text-sm text-color-secondary">
+                عرض {{ attendancesStore.meta?.from ?? 0 }} - {{ attendancesStore.meta?.to ?? 0 }} من
+                {{ attendancesStore.total }}
+              </span>
+              <div class="flex gap-1">
+                <Button
+                  icon="pi pi-chevron-right"
+                  text
+                  size="small"
+                  :disabled="attendancesStore.currentPage <= 1"
+                  @click="onAttendancePageChange(attendancesStore.currentPage - 1)"
+                />
+                <span class="flex align-items-center px-2 text-sm">
+                  {{ attendancesStore.currentPage }} / {{ attendancesStore.lastPage }}
+                </span>
+                <Button
+                  icon="pi pi-chevron-left"
+                  text
+                  size="small"
+                  :disabled="attendancesStore.currentPage >= attendancesStore.lastPage"
+                  @click="onAttendancePageChange(attendancesStore.currentPage + 1)"
+                />
+              </div>
+            </div>
+          </TabPanel>
+
+          <TabPanel value="payrolls">
+            <div class="flex justify-content-end mb-3">
+              <Button
+                label="إنشاء كشف راتب"
+                icon="pi pi-plus"
+                size="small"
+                @click="openCreatePayroll"
+              />
+            </div>
+            <div v-if="payrollsStore.loading" class="flex justify-content-center py-4">
+              <i class="pi pi-spin pi-spinner text-2xl text-color-secondary"></i>
+            </div>
+            <DataTable
+              v-else-if="payrollsStore.items.length"
+              :value="payrollsStore.items"
+              data-key="id"
+              striped-rows
+              responsive-layout="scroll"
+              class="p-datatable-sm"
+            >
+              <Column header="الشهر/السنة" style="width: 140px">
+                <template #body="{ data }">{{ monthLabels[data.month] }} {{ data.year }}</template>
+              </Column>
+              <Column field="total_bonus" header="إجمالي المكافآت">
+                <template #body="{ data }">
+                  {{ data.total_bonus.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                </template>
+              </Column>
+              <Column field="total_deductions" header="إجمالي الخصومات">
+                <template #body="{ data }">
+                  {{ data.total_deductions.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                </template>
+              </Column>
+              <Column field="total_loans" header="إجمالي السلف">
+                <template #body="{ data }">
+                  {{ data.total_loans.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                </template>
+              </Column>
+              <Column field="net_salary" header="صافي الراتب">
+                <template #body="{ data }">
+                  {{ data.net_salary.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                </template>
+              </Column>
+              <Column field="status" header="الحالة" style="width: 100px">
+                <template #body="{ data }">
+                  <Tag
+                    :value="statusLabel(data.status)"
+                    :severity="data.status === 'paid' ? 'success' : 'warn'"
+                  />
+                </template>
+              </Column>
+              <Column header="الإجراءات" style="width: 180px">
+                <template #body="{ data }">
+                  <Button
+                    v-if="data.status === 'pending'"
+                    label="صرف الراتب"
+                    icon="pi pi-wallet"
+                    text
+                    size="small"
+                    class="p-button-success"
+                    @click="openPayPayroll(data)"
+                  />
+                  <Button
+                    v-if="data.status === 'pending'"
+                    icon="pi pi-trash"
+                    text
+                    size="small"
+                    class="p-button-danger"
+                    @click="confirmDeletePayroll(data)"
+                  />
+                  <span v-if="data.status === 'paid'" class="text-sm text-color-secondary">—</span>
+                </template>
+              </Column>
+            </DataTable>
+            <p v-else class="text-color-secondary m-0 py-4">لا توجد كشوف رواتب</p>
+            <div
+              v-if="payrollsStore.lastPage > 1"
+              class="flex justify-content-between align-items-center border-top-1 surface-border pt-3 mt-3"
+            >
+              <span class="text-sm text-color-secondary">
+                عرض {{ payrollsStore.meta?.from ?? 0 }} - {{ payrollsStore.meta?.to ?? 0 }} من
+                {{ payrollsStore.total }}
+              </span>
+              <div class="flex gap-1">
+                <Button
+                  icon="pi pi-chevron-right"
+                  text
+                  size="small"
+                  :disabled="payrollsStore.currentPage <= 1"
+                  @click="onPayrollPageChange(payrollsStore.currentPage - 1)"
+                />
+                <span class="flex align-items-center px-2 text-sm">
+                  {{ payrollsStore.currentPage }} / {{ payrollsStore.lastPage }}
+                </span>
+                <Button
+                  icon="pi pi-chevron-left"
+                  text
+                  size="small"
+                  :disabled="payrollsStore.currentPage >= payrollsStore.lastPage"
+                  @click="onPayrollPageChange(payrollsStore.currentPage + 1)"
+                />
+              </div>
+            </div>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
     </template>
+
+    <!-- Attendance Dialog -->
+    <Dialog
+      v-model:visible="attendanceDialogVisible"
+      :header="isAttendanceEdit ? 'تعديل حضور' : 'تسجيل حضور'"
+      :modal="true"
+      :style="{ width: '420px' }"
+      @hide="attendanceDialogVisible = false"
+    >
+      <EmployeeAttendanceForm
+        v-if="attendanceDialogVisible"
+        :model-value="attendanceFormModel"
+        :employee-options="employeeOptions"
+        :fixed-employee-id="employeeId"
+        :loading="attendancesStore.loading"
+        :is-edit="isAttendanceEdit"
+        @submit="onAttendanceSubmit"
+        @cancel="attendanceDialogVisible = false"
+      />
+    </Dialog>
 
     <!-- Transaction Dialog -->
     <Dialog
@@ -613,3 +909,9 @@ onMounted(loadData)
     </Dialog>
   </div>
 </template>
+
+<style scoped>
+.employee-detail-tabs :deep([data-pc-name='tabpanel']) {
+  padding-top: 0.25rem;
+}
+</style>

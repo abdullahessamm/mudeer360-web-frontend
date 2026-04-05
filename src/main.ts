@@ -32,6 +32,11 @@ import AutoComplete from 'primevue/autocomplete'
 import Chart from 'primevue/chart'
 import Select from 'primevue/select'
 import Sidebar from 'primevue/sidebar'
+import Tab from 'primevue/tab'
+import TabList from 'primevue/tablist'
+import TabPanel from 'primevue/tabpanel'
+import TabPanels from 'primevue/tabpanels'
+import Tabs from 'primevue/tabs'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 
@@ -93,6 +98,11 @@ app.component('Chart', Chart)
 app.component('ConfirmDialog', ConfirmDialog)
 app.component('Select', Select)
 app.component('Sidebar', Sidebar)
+app.component('Tab', Tab)
+app.component('TabList', TabList)
+app.component('TabPanel', TabPanel)
+app.component('TabPanels', TabPanels)
+app.component('Tabs', Tabs)
 app.component('Tag', Tag)
 app.component('Textarea', Textarea)
 

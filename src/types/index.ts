@@ -382,6 +382,18 @@ export interface EmployeeTransaction {
   updated_at?: string
 }
 
+export interface EmployeeAttendance {
+  id: number
+  employee_id: number
+  employee?: Employee | null
+  work_date: string
+  check_in: string | null
+  check_out: string | null
+  notes: string | null
+  created_at?: string
+  updated_at?: string
+}
+
 export interface Payroll {
   id: number
   employee_id: number

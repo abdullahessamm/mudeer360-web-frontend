@@ -923,7 +923,11 @@ onUnmounted(() => {
         </div>
       </header>
       <main class="main-body">
-        <router-view />
+        <router-view v-slot="{ Component, route }">
+          <Transition name="fade" mode="out-in">
+            <component :is="Component" :key="route.fullPath" />
+          </Transition>
+        </router-view>
       </main>
       <footer class="main-footer">
         <span class="footer-text"
