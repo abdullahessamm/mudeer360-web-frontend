@@ -1,8 +1,7 @@
 import axios from 'axios'
 
 export const apiClient = axios.create({
-  // baseURL: 'https://mahmoud-rafat.online',
-  baseURL: 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_URL,
   withCredentials: true,
   withXSRFToken: true,
   headers: {
