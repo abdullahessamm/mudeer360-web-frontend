@@ -14,6 +14,18 @@ function itemAmount(item: SaleInvoiceItem): number {
   return item.total_price ?? item.quantity * item.unit_price
 }
 
+/** When true, line has a product and on-hand qty is below line qty (for UX warning before dispense with deduct). */
+export function isDispenseStockInsufficient(
+  item: SaleInvoiceItem,
+  deductStock: boolean,
+): boolean {
+  if (!deductStock || item.is_dispensed) return false
+  if (!item.product_id) return false
+  const available = item.product?.quantity
+  if (available == null) return false
+  return available < item.quantity
+}
+
 export function getDispenseStats(items: SaleInvoiceItem[] | undefined): DispenseStats {
   const list = items ?? []
   let dispensedAmount = 0

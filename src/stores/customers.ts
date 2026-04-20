@@ -206,6 +206,33 @@ export const useCustomersStore = defineStore('customers', () => {
     }
   }
 
+  /** Opening / initial balance ledger row only — no cashbook movement. Amount may be negative; 0 clears. */
+  async function setInitialBalance(
+    id: number,
+    payload: {
+      amount: number
+      date: string
+      description?: string | null
+    },
+  ): Promise<Customer> {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.put(`/api/customers/${id}/initial-balance`, payload)
+      const updated = unwrapPayload<Customer>(data)
+      const idx = items.value.findIndex((c) => c.id === id)
+      if (idx !== -1) items.value[idx] = updated
+      const ai = allCustomers.value.findIndex((c) => c.id === id)
+      if (ai !== -1) allCustomers.value[ai] = updated
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل حفظ الرصيد الافتتاحي')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function fetchBalanceTransactions(
     id: number,
     page = 1,
@@ -241,6 +268,7 @@ export const useCustomersStore = defineStore('customers', () => {
     remove,
     chargeBalance,
     withdrawBalance,
+    setInitialBalance,
     fetchBalanceTransactions,
     clearError,
   }

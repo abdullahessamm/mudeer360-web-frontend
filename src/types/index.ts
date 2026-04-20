@@ -125,6 +125,8 @@ export interface SaleInvoiceItem {
   unit_price: number
   total_price?: number
   is_dispensed?: boolean
+  /** After dispense: whether warehouse quantity was reduced for this line */
+  stock_deducted?: boolean
 }
 
 /** Full sale invoice (from /api/sale-invoices) */
@@ -350,7 +352,7 @@ export interface FinancialTransaction {
 export interface CustomerBalanceTransaction {
   id: number
   change_amount: number
-  type: 'manual_charge' | 'manual_withdraw' | 'invoice_payment'
+  type: 'manual_charge' | 'manual_withdraw' | 'invoice_payment' | 'initial_balance'
   sale_invoice_id: number | null
   invoice_number?: string | null
   financial_transactions?: FinancialTransaction[]

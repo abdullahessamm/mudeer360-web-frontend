@@ -4,7 +4,12 @@ import html2pdf from 'html2pdf.js'
 import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { formatDateLocal, getCurrentMonthRange } from '@/lib/date'
-import { getDispenseStats, DISPENSE_STATUS_LABELS, DISPENSE_STATUS_SEVERITY } from '@/lib/dispense'
+import {
+  getDispenseStats,
+  DISPENSE_STATUS_LABELS,
+  DISPENSE_STATUS_SEVERITY,
+  isDispenseStockInsufficient,
+} from '@/lib/dispense'
 import { showError, showSuccess } from '@/composables/useToast'
 import { exportAccountStatement } from '@/composables/useExportAccountStatement'
 import { useCustomersStore } from '@/stores/customers'
@@ -40,6 +45,7 @@ const isEditPayment = ref(false)
 const editingPaymentId = ref<number | null>(null)
 const paymentFormModel = ref<Partial<PaymentPayload> | null>(null)
 const dispensingItemId = ref<number | null>(null)
+const deductStockByLineId = ref<Record<number, boolean>>({})
 
 const invoicePdfRoot = ref<HTMLElement | null>(null)
 const pdfExporting = ref(false)
@@ -65,6 +71,13 @@ const withdrawForm = ref({
   amount: 0,
   date: formatDateLocal(new Date()),
   financial_account_id: null as number | null,
+  description: '',
+})
+
+const initialBalanceDialogVisible = ref(false)
+const initialBalanceForm = ref({
+  amount: 0 as number | null,
+  date: formatDateLocal(new Date()),
   description: '',
 })
 
@@ -111,14 +124,31 @@ const invoices = computed(() => {
   })
 })
 
+/** List totals (عدد / إجمالي / مدفوع) من الفواتير المعروضة؛ باقي المؤشرات من `payload.summary` عند توفرها. */
 const invoiceSummary = computed(() => {
   const list = invoices.value
+  const count = list.length
   const totalAmount = list.reduce((sum, inv) => sum + inv.total_amount, 0)
   const paidAmount = list.reduce((sum, inv) => sum + inv.paid_amount, 0)
-  const remainingAmount = list.reduce(
+  const remainingFromInvoices = list.reduce(
     (sum, inv) => sum + Math.max(0, inv.total_amount - inv.paid_amount),
     0,
   )
+
+  const s = customer.value?.summary
+  if (s) {
+    return {
+      count,
+      total_amount: totalAmount,
+      paid_amount: paidAmount,
+      remaining_amount: s.total_remaining,
+      total_dispensed_amount: s.total_dispensed_amount,
+      total_remaining_dispense: s.total_remaining_dispense,
+      total_remaining: s.total_remaining,
+      total_dues: s.total_dues,
+    }
+  }
+
   let totalDispensed = 0
   let totalRemainingDispense = 0
   for (const inv of list) {
@@ -129,15 +159,15 @@ const invoiceSummary = computed(() => {
       else totalRemainingDispense += itemTotal
     }
   }
-  const totalDues = totalRemainingDispense - remainingAmount
+  const totalDues = totalRemainingDispense - remainingFromInvoices
   return {
-    count: list.length,
+    count,
     total_amount: totalAmount,
     paid_amount: paidAmount,
-    remaining_amount: remainingAmount,
+    remaining_amount: remainingFromInvoices,
     total_dispensed_amount: totalDispensed,
     total_remaining_dispense: totalRemainingDispense,
-    total_remaining: remainingAmount,
+    total_remaining: remainingFromInvoices,
     total_dues: totalDues,
   }
 })
@@ -194,6 +224,7 @@ function balanceTxTypeLabel(type: string) {
     manual_charge: 'شحن',
     manual_withdraw: 'سحب',
     invoice_payment: 'دفع فاتورة',
+    initial_balance: 'رصيد افتتاحي',
   }
   return map[type] ?? type
 }
@@ -282,9 +313,15 @@ function closeDetailsDialog() {
   selectedInvoice.value = null
 }
 
+function getCustomerFetchDateParams(): { date_from: string; date_to: string } | undefined {
+  const r = getDateRange()
+  if (!r) return undefined
+  return { date_from: r.from, date_to: r.to }
+}
+
 async function refetchCustomer() {
   if (!customerId.value) return
-  const updated = await store.fetchById(customerId.value)
+  const updated = await store.fetchById(customerId.value, getCustomerFetchDateParams())
   if (updated) customer.value = updated
 }
 
@@ -375,11 +412,22 @@ function onInvoiceFormCancel() {
   invoiceDialogVisible.value = false
 }
 
+function lineWantsDeductStock(lineId: number | undefined): boolean {
+  if (!lineId) return true
+  return deductStockByLineId.value[lineId] !== false
+}
+
+function setLineDeductStock(lineId: number, v: boolean) {
+  deductStockByLineId.value = { ...deductStockByLineId.value, [lineId]: v }
+}
+
 async function onDispenseItem(invoice: SaleInvoice, item: { id?: number }) {
   if (!item.id) return
   dispensingItemId.value = item.id
   try {
-    await salesStore.dispense(invoice.id, [item.id])
+    await salesStore.dispense(invoice.id, {
+      dispenseItems: [{ id: item.id, deduct_stock: lineWantsDeductStock(item.id) }],
+    })
     showSuccess('تم صرف الصنف بنجاح')
     await refetchCustomer()
     if (selectedInvoice.value?.id === invoice.id) {
@@ -536,6 +584,64 @@ async function onWithdrawSubmit() {
   }
 }
 
+async function openInitialBalanceDialog() {
+  initialBalanceForm.value = {
+    amount: 0,
+    date: formatDateLocal(new Date()),
+    description: '',
+  }
+  initialBalanceDialogVisible.value = true
+  if (!customer.value) return
+  try {
+    const res = await store.fetchBalanceTransactions(customer.value.id, 1, 1, 'initial_balance')
+    const row = res.data[0]
+    if (row) {
+      initialBalanceForm.value = {
+        amount: row.change_amount,
+        date:
+          typeof row.date === 'string'
+            ? row.date.slice(0, 10)
+            : formatDateLocal(new Date(row.date)),
+        description: row.description ?? '',
+      }
+    }
+  } catch {
+    // keep defaults
+  }
+}
+
+function setInitialBalanceDate(v: Date | Date[] | (Date | null)[] | null | undefined) {
+  const raw = Array.isArray(v) ? v[0] : v
+  const d = raw instanceof Date ? raw : new Date()
+  initialBalanceForm.value.date = formatDateLocal(d)
+}
+
+async function onInitialBalanceSubmit() {
+  if (!customer.value) return
+  const raw = initialBalanceForm.value.amount
+  if (raw === null || raw === undefined || Number.isNaN(Number(raw))) {
+    showError('أدخل المبلغ (أو 0 لإزالة الرصيد الافتتاحي)')
+    return
+  }
+  let amount = Number(raw)
+  if (Math.abs(amount) < 0.0001) amount = 0
+  try {
+    await store.setInitialBalance(customer.value.id, {
+      amount,
+      date: initialBalanceForm.value.date,
+      description: initialBalanceForm.value.description.trim() || undefined,
+    })
+    showSuccess(amount === 0 ? 'تم إلغاء الرصيد الافتتاحي' : 'تم حفظ الرصيد الافتتاحي')
+    initialBalanceDialogVisible.value = false
+    await refetchCustomer()
+    if (balanceHistoryDialogVisible.value) {
+      await loadBalanceHistory(balanceTxMeta.value?.current_page ?? 1)
+    }
+  } catch {
+    // toast via store.error watch
+  }
+}
+
 async function onPaymentFormSubmit(payload: PaymentPayload) {
   if (!selectedInvoice.value) return
   try {
@@ -594,6 +700,27 @@ function confirmDeletePayment(payment: InvoicePaymentLine) {
 }
 
 watch(
+  () => selectedInvoice.value?.id,
+  () => {
+    deductStockByLineId.value = {}
+  },
+)
+
+watch(
+  () => filters.value.dateRange,
+  async () => {
+    if (!customerId.value || loading.value) return
+    loading.value = true
+    try {
+      await refetchCustomer()
+    } finally {
+      loading.value = false
+    }
+  },
+  { deep: true },
+)
+
+watch(
   () => [store.error, salesStore.error],
   ([sErr, pErr]) => {
     if (sErr) {
@@ -616,7 +743,7 @@ onMounted(async () => {
   loading.value = true
   try {
     const [customerData] = await Promise.all([
-      store.fetchById(id),
+      store.fetchById(id, getCustomerFetchDateParams()),
       productsStore.fetchAllForSelect(),
       accountsStore.fetchAll(),
     ])
@@ -681,6 +808,14 @@ onMounted(async () => {
               icon="pi pi-wallet"
               size="small"
               @click="openChargeDialog"
+            />
+            <Button
+              label="الرصيد الافتتاحي"
+              icon="pi pi-bookmark"
+              size="small"
+              severity="info"
+              outlined
+              @click="openInitialBalanceDialog"
             />
             <Button
               label="سحب رصيد"
@@ -1051,13 +1186,31 @@ onMounted(async () => {
               >
                 <Column field="product_name" header="المنتج">
                   <template #body="{ data: item }">
-                    <span>{{ item.product?.name ?? item.product_name ?? '—' }}</span>
-                    <Tag
-                      v-if="item.is_dispensed"
-                      value="تم الصرف"
-                      severity="success"
-                      class="mr-2"
-                    />
+                    <div class="flex flex-column gap-1 align-items-start">
+                      <span>{{ item.product?.name ?? item.product_name ?? '—' }}</span>
+                      <div class="flex flex-wrap gap-1 align-items-center">
+                        <Tag v-if="item.is_dispensed" value="تم الصرف" severity="success" />
+                        <Tag
+                          v-if="item.is_dispensed && item.stock_deducted === true"
+                          value="من المخزون"
+                          severity="info"
+                        />
+                        <Tag
+                          v-else-if="item.is_dispensed && item.stock_deducted === false"
+                          value="دون خصم مخزون"
+                          severity="secondary"
+                        />
+                        <Tag
+                          v-if="
+                            !item.is_dispensed &&
+                            item.id &&
+                            isDispenseStockInsufficient(item, lineWantsDeductStock(item.id))
+                          "
+                          value="مخزون غير كافٍ"
+                          severity="warn"
+                        />
+                      </div>
+                    </div>
                   </template>
                 </Column>
                 <Column field="quantity" header="الكمية" />
@@ -1068,6 +1221,21 @@ onMounted(async () => {
                   <template #body="{ data: item }">{{
                     formatAmount(item.total_price ?? item.quantity * item.unit_price)
                   }}</template>
+                </Column>
+                <Column header="خصم من المخزون" style="width: 7rem">
+                  <template #body="{ data: item }">
+                    <div v-if="!item.is_dispensed && item.id" class="flex align-items-center gap-2">
+                      <Checkbox
+                        v-if="item.product_id"
+                        :model-value="lineWantsDeductStock(item.id)"
+                        :binary="true"
+                        :input-id="`cust-deduct-${item.id}`"
+                        @update:model-value="(v: boolean) => setLineDeductStock(item.id, v)"
+                      />
+                      <span v-else class="text-color-secondary text-sm">—</span>
+                    </div>
+                    <span v-else class="text-color-secondary">—</span>
+                  </template>
                 </Column>
                 <Column header="الإجراءات" style="width: 140px">
                   <template #body="{ data: item }">
@@ -1384,6 +1552,59 @@ onMounted(async () => {
             :loading="store.loading"
             :disabled="withdrawForm.amount <= 0 || withdrawForm.amount > (customer?.balance ?? 0)"
             @click="onWithdrawSubmit"
+          />
+        </div>
+      </div>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="initialBalanceDialogVisible"
+      header="الرصيد الافتتاحي للعميل"
+      :modal="true"
+      :style="{ width: '460px' }"
+      @hide="initialBalanceDialogVisible = false"
+    >
+      <div v-if="initialBalanceDialogVisible" class="flex flex-column gap-3">
+        <p class="text-color-secondary text-sm line-height-3 m-0">
+          يُسجَّل كبند افتتاحي في رصيد العميل فقط — دون حركة نقدية أو اختيار حساب بنكي/صندوق. يمكن إدخال
+          قيمة سالبة إذا كان العميل يبدأ برصيد مدين (مستحق لك). أدخل
+          <strong>0</strong>
+          لإزالة الرصيد الافتتاحي إن وُجد.
+        </p>
+        <div class="field">
+          <label>المبلغ</label>
+          <InputNumber
+            v-model="initialBalanceForm.amount"
+            :min="-999999999"
+            :max="999999999"
+            :min-fraction-digits="0"
+            :max-fraction-digits="4"
+            class="w-full mt-1"
+          />
+        </div>
+        <div class="field">
+          <label>التاريخ</label>
+          <DatePicker
+            :model-value="
+              initialBalanceForm.date ? new Date(initialBalanceForm.date + 'T12:00:00') : null
+            "
+            date-format="yy-mm-dd"
+            show-icon
+            class="w-full mt-1"
+            @update:model-value="setInitialBalanceDate"
+          />
+        </div>
+        <div class="field">
+          <label>الوصف (اختياري)</label>
+          <Textarea v-model="initialBalanceForm.description" class="w-full mt-1" rows="2" />
+        </div>
+        <div class="flex justify-content-end gap-2 flex-wrap">
+          <Button label="إلغاء" text @click="initialBalanceDialogVisible = false" />
+          <Button
+            label="حفظ"
+            icon="pi pi-check"
+            :loading="store.loading"
+            @click="onInitialBalanceSubmit"
           />
         </div>
       </div>

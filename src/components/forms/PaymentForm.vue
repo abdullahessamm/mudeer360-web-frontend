@@ -53,15 +53,27 @@ const datePickerValue = computed({
   },
 })
 
-const effectiveCustomerBalance = computed(() =>
-  props.allowBalanceSplit ? (props.customerBalance ?? 0) : 0,
+/** Portion of customer balance that can be applied to this invoice (prepaid only; ≤ 0 if they owe). */
+const balanceApplyCap = computed(() =>
+  props.allowBalanceSplit ? Math.max(0, props.customerBalance ?? 0) : 0,
 )
 
 const maxBalancePortion = computed(() => {
   if (!props.allowBalanceSplit || props.isEdit) return 0
   const cap = props.maxAmount ?? Infinity
-  return Math.min(effectiveCustomerBalance.value, cap)
+  return Math.min(balanceApplyCap.value, cap)
 })
+
+watch(
+  () => [props.customerBalance, props.allowBalanceSplit, props.maxAmount, props.isEdit] as const,
+  () => {
+    if (!props.allowBalanceSplit || props.isEdit) return
+    const cap = maxBalancePortion.value
+    if ((form.balance_amount ?? 0) > cap + 0.0001) {
+      form.balance_amount = cap
+    }
+  },
+)
 
 const cashAmount = computed(() => Math.max(0, form.amount - (form.balance_amount ?? 0)))
 
@@ -81,7 +93,7 @@ const canSubmit = computed(() => {
   if (props.allowBalanceSplit) {
     const bal = form.balance_amount ?? 0
     if (bal < 0) return false
-    if (bal > effectiveCustomerBalance.value + 0.0001) return false
+    if (bal > balanceApplyCap.value + 0.0001) return false
     if (bal > form.amount + 0.0001) return false
     const cash = form.amount - bal
     if (cash > 0.0001 && !form.financial_account_id) return false
@@ -161,7 +173,8 @@ function onCancel() {
           class="w-full mt-1"
         />
         <small class="text-color-secondary">
-          الرصيد المتاح: {{ effectiveCustomerBalance.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+          يمكن خصمه من الرصيد:
+          {{ balanceApplyCap.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
         </small>
       </div>
       <div v-if="cashAmount > 0.0001" class="text-sm text-color-secondary">

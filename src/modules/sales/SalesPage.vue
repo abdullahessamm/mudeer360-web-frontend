@@ -2,7 +2,12 @@
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import html2pdf from 'html2pdf.js'
 import { formatDateLocal, getCurrentMonthRange } from '@/lib/date'
-import { getDispenseStats, DISPENSE_STATUS_LABELS, DISPENSE_STATUS_SEVERITY } from '@/lib/dispense'
+import {
+  getDispenseStats,
+  DISPENSE_STATUS_LABELS,
+  DISPENSE_STATUS_SEVERITY,
+  isDispenseStockInsufficient,
+} from '@/lib/dispense'
 import { useConfirm } from 'primevue/useconfirm'
 import { showError, showSuccess } from '@/composables/useToast'
 import { useSalesStore } from '@/stores/sales'
@@ -29,6 +34,22 @@ watch(
   },
 )
 
+watch(
+  () => store.currentInvoice?.id,
+  () => {
+    deductStockByLineId.value = {}
+  },
+)
+
+function lineWantsDeductStock(lineId: number | undefined): boolean {
+  if (!lineId) return true
+  return deductStockByLineId.value[lineId] !== false
+}
+
+function setLineDeductStock(lineId: number, v: boolean) {
+  deductStockByLineId.value = { ...deductStockByLineId.value, [lineId]: v }
+}
+
 const filters = ref({
   customer_id: null as number | null,
   status: null as 'unpaid' | 'partial' | 'paid' | null,
@@ -48,6 +69,8 @@ const isEditPayment = ref(false)
 const editingPaymentId = ref<number | null>(null)
 const paymentFormModel = ref<Partial<PaymentPayload> | null>(null)
 const dispensingItemId = ref<number | null>(null)
+/** Per sale_invoice_item id: whether to deduct stock when dispensing (default true). */
+const deductStockByLineId = ref<Record<number, boolean>>({})
 
 const invoicePdfRoot = ref<HTMLElement | null>(null)
 const pdfExporting = ref(false)
@@ -307,7 +330,15 @@ function onPaymentFormCancel() {
 async function onDispenseAll() {
   if (!store.currentInvoice) return
   try {
-    await store.dispense(store.currentInvoice.id)
+    const pending =
+      store.currentInvoice.items?.filter((i) => !i.is_dispensed && i.id) ?? []
+    if (pending.length === 0) return
+    await store.dispense(store.currentInvoice.id, {
+      dispenseItems: pending.map((i) => ({
+        id: i.id!,
+        deduct_stock: lineWantsDeductStock(i.id),
+      })),
+    })
     showSuccess('تم صرف الأصناف بنجاح')
     await store.fetchById(store.currentInvoice.id)
     await store.fetchPayments(store.currentInvoice.id)
@@ -321,7 +352,9 @@ async function onDispenseItem(item: { id?: number }) {
   if (!store.currentInvoice || !item.id) return
   dispensingItemId.value = item.id
   try {
-    await store.dispense(store.currentInvoice.id, [item.id])
+    await store.dispense(store.currentInvoice.id, {
+      dispenseItems: [{ id: item.id, deduct_stock: lineWantsDeductStock(item.id) }],
+    })
     showSuccess('تم صرف الصنف بنجاح')
     await store.fetchById(store.currentInvoice.id)
     await store.fetchPayments(store.currentInvoice.id)
@@ -875,8 +908,31 @@ onMounted(async () => {
           <DataTable :value="store.currentInvoice.items" size="small" class="p-datatable-sm">
             <Column field="product_name" header="المنتج">
               <template #body="{ data }">
-                <span>{{ data.product?.name ?? data.product_name ?? '—' }}</span>
-                <Tag v-if="data.is_dispensed" value="تم الصرف" severity="success" class="mr-2" />
+                <div class="flex flex-column gap-1 align-items-start">
+                  <span>{{ data.product?.name ?? data.product_name ?? '—' }}</span>
+                  <div class="flex flex-wrap gap-1 align-items-center">
+                    <Tag v-if="data.is_dispensed" value="تم الصرف" severity="success" />
+                    <Tag
+                      v-if="data.is_dispensed && data.stock_deducted === true"
+                      value="من المخزون"
+                      severity="info"
+                    />
+                    <Tag
+                      v-else-if="data.is_dispensed && data.stock_deducted === false"
+                      value="دون خصم مخزون"
+                      severity="secondary"
+                    />
+                    <Tag
+                      v-if="
+                        !data.is_dispensed &&
+                        data.id &&
+                        isDispenseStockInsufficient(data, lineWantsDeductStock(data.id))
+                      "
+                      value="مخزون غير كافٍ"
+                      severity="warn"
+                    />
+                  </div>
+                </div>
               </template>
             </Column>
             <Column field="quantity" header="الكمية" />
@@ -891,6 +947,21 @@ onMounted(async () => {
                   minimumFractionDigits: 2,
                 })
               }}</template>
+            </Column>
+            <Column header="خصم من المخزون" style="width: 7rem">
+              <template #body="{ data }">
+                <div v-if="!data.is_dispensed && data.id" class="flex align-items-center gap-2">
+                  <Checkbox
+                    v-if="data.product_id"
+                    :model-value="lineWantsDeductStock(data.id)"
+                    :binary="true"
+                    :input-id="`sale-deduct-${data.id}`"
+                    @update:model-value="(v: boolean) => setLineDeductStock(data.id, v)"
+                  />
+                  <span v-else class="text-color-secondary text-sm">—</span>
+                </div>
+                <span v-else class="text-color-secondary">—</span>
+              </template>
             </Column>
             <Column header="الإجراءات" style="width: 140px">
               <template #body="{ data }">

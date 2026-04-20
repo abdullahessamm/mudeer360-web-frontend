@@ -161,20 +161,33 @@ export const useSalesStore = defineStore('sales', () => {
     }
   }
 
+  function normalizeSalePayBody(payload: PaymentPayload): Record<string, unknown> {
+    const rawBal = payload.balance_amount ?? 0
+    const balance_amount = rawBal > 0.0001 ? rawBal : null
+    const body: Record<string, unknown> = {
+      amount: payload.amount,
+      date: payload.date,
+    }
+    
+    if (balance_amount != null) {
+      body.balance_amount = balance_amount
+    }
+
+    if (payload.financial_account_id != null) {
+      body.financial_account_id = payload.financial_account_id
+    }
+    const desc = payload.description?.trim()
+    if (desc) body.description = desc
+
+    return body
+  }
+
   async function pay(id: number, payload: PaymentPayload): Promise<SaleInvoice> {
+    console.log('payload', normalizeSalePayBody(payload))
     showLoading.value = true
     error.value = null
     try {
-      const body: Record<string, unknown> = {
-        amount: payload.amount,
-        date: payload.date,
-        balance_amount: payload.balance_amount ?? 0,
-        description: payload.description,
-      }
-      if (payload.financial_account_id != null) {
-        body.financial_account_id = payload.financial_account_id
-      }
-      const { data } = await apiClient.post(`${API_BASE}/${id}/pay`, body)
+      const { data } = await apiClient.post(`${API_BASE}/${id}/pay`, normalizeSalePayBody(payload))
       const updated = unwrapPayload<SaleInvoice>(data)
       const idx = items.value.findIndex((p) => p.id === id)
       if (idx !== -1) items.value[idx] = updated
@@ -220,7 +233,7 @@ export const useSalesStore = defineStore('sales', () => {
     try {
       const { data } = await apiClient.put(
         `${API_BASE}/${invoiceId}/payments/${transactionId}`,
-        payload,
+        normalizeSalePayBody(payload),
       )
       const updated = unwrapPayload<SaleInvoice>(data)
       const idx = items.value.findIndex((p) => p.id === invoiceId)
@@ -235,13 +248,26 @@ export const useSalesStore = defineStore('sales', () => {
     }
   }
 
-  async function dispense(invoiceId: number, itemIds?: number[]): Promise<SaleInvoice> {
+  /** Dispense lines. Omit payload = all pending (backend deducts stock by default). Legacy: number[] = item_ids only. Per-line: dispenseItems (do not mix with item_ids on backend). */
+  async function dispense(
+    invoiceId: number,
+    payload?: number[] | { dispenseItems: { id: number; deduct_stock?: boolean }[] },
+  ): Promise<SaleInvoice> {
     showLoading.value = true
     error.value = null
     try {
-      const { data } = await apiClient.post(`${API_BASE}/${invoiceId}/dispense`, {
-        item_ids: itemIds ?? [],
-      })
+      const body: Record<string, unknown> = {}
+      if (payload === undefined) {
+        // omit keys → all not-yet-dispensed, deduct_stock true each
+      } else if (Array.isArray(payload)) {
+        if (payload.length > 0) body.item_ids = payload
+      } else if (payload.dispenseItems.length > 0) {
+        body.dispense_items = payload.dispenseItems.map((row) => ({
+          id: row.id,
+          deduct_stock: row.deduct_stock !== false,
+        }))
+      }
+      const { data } = await apiClient.post(`${API_BASE}/${invoiceId}/dispense`, body)
       const updated = unwrapPayload<SaleInvoice>(data)
       const idx = items.value.findIndex((p) => p.id === invoiceId)
       if (idx !== -1) items.value[idx] = updated
