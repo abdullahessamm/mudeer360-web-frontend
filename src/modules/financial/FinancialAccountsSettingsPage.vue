@@ -43,18 +43,26 @@ function canDeleteAccount(row: FinancialAccount): boolean {
 function openCreate() {
   isEdit.value = false
   editingId.value = null
-  formModel.value = { name: '', type: undefined }
+  formModel.value = { name: '', type: undefined, opening_balance: 0 }
   dialogVisible.value = true
 }
 
 function openEdit(row: FinancialAccount) {
   isEdit.value = true
   editingId.value = row.id
-  formModel.value = { name: row.name, type: row.type ?? undefined }
+  formModel.value = {
+    name: row.name,
+    type: row.type ?? undefined,
+    opening_balance: row.opening_balance ?? 0,
+  }
   dialogVisible.value = true
 }
 
-async function onFormSubmit(payload: { name: string; type?: string | null }) {
+async function onFormSubmit(payload: {
+  name: string
+  type?: string | null
+  opening_balance?: number
+}) {
   try {
     if (isEdit.value && editingId.value !== null) {
       await store.update(editingId.value, payload)
@@ -132,7 +140,10 @@ onMounted(() => {
           <Column field="type" header="النوع">
             <template #body="{ data }">{{ financialAccountTypeLabel(data.type) }}</template>
           </Column>
-          <Column field="computed_balance" header="الرصيد">
+          <Column field="opening_balance" header="رصيد افتتاحي">
+            <template #body="{ data }">{{ formatMoney(data.opening_balance ?? 0) }}</template>
+          </Column>
+          <Column field="computed_balance" header="الرصيد الحالي">
             <template #body="{ data }">
               <span
                 :class="[
@@ -183,6 +194,7 @@ onMounted(() => {
       <FinancialAccountForm
         v-if="dialogVisible"
         :model-value="formModel"
+        :is-edit="isEdit"
         :loading="store.loading"
         @submit="onFormSubmit"
         @cancel="onFormCancel"

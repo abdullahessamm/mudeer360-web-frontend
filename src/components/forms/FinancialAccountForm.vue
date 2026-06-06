@@ -8,17 +8,24 @@ import type { FinancialAccount } from '@/types'
 const props = defineProps<{
   modelValue?: Partial<FinancialAccount> | null
   loading?: boolean
+  isEdit?: boolean
 }>()
 
 const emit = defineEmits<{
-  submit: [payload: { name: string; type?: string | null }]
+  submit: [payload: { name: string; type?: string | null; opening_balance?: number }]
   cancel: []
 }>()
 
 const form = reactive({
   name: '',
   type: null as string | null,
+  opening_balance: 0,
 })
+
+function num(v: unknown, fallback = 0): number {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
 
 const typeSelectOptions = computed((): { label: string; value: string | null }[] => {
   const base: { label: string; value: string }[] = FINANCIAL_ACCOUNT_TYPE_OPTIONS.map((o) => ({
@@ -45,6 +52,7 @@ watch(
     if (v) {
       form.name = v.name ?? ''
       form.type = normalizeType(v.type)
+      form.opening_balance = num(v.opening_balance)
     }
   },
   { immediate: true },
@@ -64,6 +72,7 @@ async function onSubmit() {
   emit('submit', {
     name: form.name.trim(),
     type: form.type ?? null,
+    opening_balance: num(form.opening_balance),
   })
 }
 
@@ -110,6 +119,20 @@ function errorMsg(field: 'name' | 'type') {
         @blur="v$.type.$touch()"
       />
       <small v-if="v$.type.$error" class="p-error">{{ errorMsg('type') }}</small>
+    </div>
+    <div class="field">
+      <label for="fa-opening">الرصيد الافتتاحي</label>
+      <InputNumber
+        id="fa-opening"
+        v-model="form.opening_balance"
+        class="w-full mt-1"
+        :min-fraction-digits="0"
+        :max-fraction-digits="2"
+        locale="en-US"
+      />
+      <small class="text-color-secondary text-sm">
+        يُضاف إلى حركة الحساب في التقارير ويُسجَّل قيداً مزدوجاً (نقدية / حقوق ملكية).
+      </small>
     </div>
     <div class="flex justify-content-end gap-2 mt-2">
       <Button type="button" label="إلغاء" text @click="onCancel" />

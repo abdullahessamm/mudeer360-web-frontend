@@ -297,6 +297,7 @@ export interface FinancialAccount {
   id: number
   name: string
   type?: FinancialAccountTypeValue | string
+  opening_balance?: number
   computed_balance?: number
   created_at?: string
   updated_at?: string

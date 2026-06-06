@@ -30,13 +30,18 @@ export const useFinancialAccountsStore = defineStore('financialAccounts', () => 
     }
   }
 
-  async function create(body: { name: string; type?: string | null }) {
+  async function create(body: {
+    name: string
+    type?: string | null
+    opening_balance?: number
+  }) {
     loading.value = true
     error.value = null
     try {
       const { data } = await apiClient.post('/api/financial-accounts', {
         name: body.name.trim(),
         ...(body.type != null && body.type !== '' ? { type: body.type } : {}),
+        ...(body.opening_balance != null ? { opening_balance: body.opening_balance } : {}),
       })
       const created = unwrapPayload<FinancialAccount>(data)
       items.value = [...items.value, created]
@@ -49,13 +54,17 @@ export const useFinancialAccountsStore = defineStore('financialAccounts', () => 
     }
   }
 
-  async function update(id: number, body: { name?: string; type?: string | null }) {
+  async function update(
+    id: number,
+    body: { name?: string; type?: string | null; opening_balance?: number },
+  ) {
     loading.value = true
     error.value = null
     try {
       const payload: Record<string, unknown> = {}
       if (body.name !== undefined) payload.name = body.name.trim()
       if (body.type !== undefined) payload.type = body.type || null
+      if (body.opening_balance !== undefined) payload.opening_balance = body.opening_balance
       const { data } = await apiClient.put(`/api/financial-accounts/${id}`, payload)
       const updated = unwrapPayload<FinancialAccount>(data)
       const idx = items.value.findIndex((a) => a.id === id)
