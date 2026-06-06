@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { formatDateLocal } from '@/lib/date'
+import { formatMoney, formatNumber } from '@/lib/format'
 import { useConfirm } from 'primevue/useconfirm'
 import { exportFinancialTransactionsReport } from '@/composables/useExportFinancialTransactions'
 import { showError, showSuccess } from '@/composables/useToast'
@@ -142,8 +143,15 @@ const doughnutChartOptions = {
       callbacks: {
         label: (ctx: { parsed?: number }) => {
           const v = ctx.parsed ?? 0
-          return `${v.toLocaleString('ar-EG', { minimumFractionDigits: 2 })}`
+          return formatMoney(v)
         },
+      },
+    },
+  },
+  scales: {
+    y: {
+      ticks: {
+        callback: (value: string | number) => formatNumber(Number(value)),
       },
     },
   },
@@ -326,12 +334,12 @@ onMounted(async () => {
                     fixedType === 'income' ? 'text-green-600' : 'text-red-600',
                   ]"
                 >
-                  {{ overviewSum.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                  {{formatMoney(overviewSum) }}
                 </span>
                 <p class="text-sm text-color-secondary m-0 mt-2">
                   مجموع المبالغ من أول {{ (overview?.items ?? []).length }} سجل مطابق للفلتر
                   (للتحليل). إجمالي السجلات المطابقة:
-                  {{ (overview?.totalCount ?? 0).toLocaleString('ar-EG') }}.
+                  {{ formatNumber(overview?.totalCount ?? 0) }}.
                 </p>
               </template>
             </template>
@@ -342,7 +350,7 @@ onMounted(async () => {
             <template #title>متوسط قيمة المعاملة</template>
             <template #content>
               <span class="text-2xl font-bold text-900">
-                {{ overviewAvg.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                {{formatMoney(overviewAvg) }}
               </span>
               <p class="text-sm text-color-secondary m-0 mt-2">حسب عينة التحليل أعلاه</p>
             </template>
@@ -358,7 +366,7 @@ onMounted(async () => {
                   slice.accountBalance >= 0 ? 'text-green-600' : 'text-red-600',
                 ]"
               >
-                {{ slice.accountBalance.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                {{formatMoney(slice.accountBalance) }}
               </span>
               <p class="text-sm text-color-secondary m-0 mt-2">
                 يتأثر باختيار الحساب في الجدول أدناه عند وجوده
@@ -393,7 +401,7 @@ onMounted(async () => {
                 <Column field="name" header="الحساب" />
                 <Column field="sum" header="المجموع">
                   <template #body="{ data }">
-                    {{ data.sum.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                    {{formatMoney(data.sum) }}
                   </template>
                 </Column>
                 <Column field="count" header="عدد العمليات" />
@@ -416,7 +424,7 @@ onMounted(async () => {
             slice.accountBalance >= 0 ? 'text-green-600' : 'text-red-600',
           ]"
         >
-          {{ slice.accountBalance.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+          {{formatMoney(slice.accountBalance) }}
         </span>
       </div>
       <Button label="إضافة معاملة" icon="pi pi-plus" @click="openCreate" />
@@ -602,7 +610,7 @@ onMounted(async () => {
           </Column>
           <Column field="amount" header="المبلغ">
             <template #body="{ data }">
-              {{ data.amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+              {{formatMoney(data.amount) }}
             </template>
           </Column>
           <Column field="description" header="الوصف">

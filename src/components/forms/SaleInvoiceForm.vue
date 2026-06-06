@@ -3,6 +3,7 @@ import { ref, reactive, computed, watch } from 'vue'
 import { useCustomersStore } from '@/stores/customers'
 import { formatDateLocal } from '@/lib/date'
 import type { Customer, SaleInvoice, SaleInvoiceCreatePayload, SaleInvoiceItem } from '@/types'
+import { formatMoney } from '@/lib/format'
 
 const props = defineProps<{
   modelValue?: Partial<SaleInvoice> | null
@@ -247,11 +248,7 @@ watch(
         </Column>
         <Column header="المجموع" style="width: 100px">
           <template #body="{ data }">
-            {{
-              (data.quantity * data.unit_price).toLocaleString('ar-EG', {
-                minimumFractionDigits: 2,
-              })
-            }}
+            {{ formatMoney(data.quantity * data.unit_price) }}
           </template>
         </Column>
         <Column header="" style="width: 60px">
@@ -272,7 +269,7 @@ watch(
     </div>
     <div class="flex justify-content-between align-items-center mt-2">
       <span class="font-semibold"
-        >الإجمالي: {{ totalAmount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}</span
+        >الإجمالي: {{formatMoney(totalAmount) }}</span
       >
       <div class="flex gap-2">
         <Button type="button" label="إلغاء" text @click="onCancel" />

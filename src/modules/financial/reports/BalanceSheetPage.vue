@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { showError } from '@/composables/useToast'
 import { financialAccountTypeLabel } from '@/lib/financialAccountTypes'
+import FinancialReportShell from '@/components/reports/FinancialReportShell.vue'
 import { useFinancialReportsStore } from '@/stores/financialReports'
+import { formatMoney } from '@/lib/format'
 
 const store = useFinancialReportsStore()
+
+const showCashDetails = ref(true)
+const showFixedDetails = ref(true)
+const showStockDetails = ref(true)
 
 watch(
   () => store.error,
@@ -17,27 +23,65 @@ watch(
 )
 
 function fmt(n: number) {
-  return n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return formatMoney(n)
 }
 
 async function load() {
   await store.getBalanceSheet()
 }
 
+const sheet = computed(() => store.balanceSheet)
+
+const financialAssetsTotal = computed(
+  () =>
+    sheet.value?.financial_assets_total ??
+    sheet.value?.assets.reduce((s, r) => s + r.balance, 0) ??
+    0,
+)
+
+const fixedAssetsByCategory = computed(() => sheet.value?.fixed_assets?.by_category ?? [])
+
+const fixedAssetsTotal = computed(() => sheet.value?.fixed_assets?.total ?? 0)
+
+const stock = computed(
+  () =>
+    sheet.value?.stock ?? {
+      opening_value: 0,
+      purchases: 0,
+      sales_cost: 0,
+      total: 0,
+    },
+)
+
+const stockTotal = computed(() => stock.value.total)
+
 const liabilityRows = computed(() => {
-  const L = store.balanceSheet?.liabilities
+  const L = sheet.value?.liabilities
   if (!L) return []
   return [
-    { key: 'suppliers', label: 'ذمم الموردين (فواتير غير مسددة / جزئية)', amount: L.suppliers },
-    { key: 'payroll', label: 'رواتب معلّقة', amount: L.payroll },
-    { key: 'customers', label: 'أرصدة عملاء دائنة (يُستحق للعميل)', amount: L.customers },
-    {
-      key: 'partners',
-      label: 'جاري الشركاء (مسحوبات تفوق الإيداع — التزام)',
-      amount: L.partners,
-    },
-  ]
+    { key: 'suppliers', label: 'ذمم الموردين', hint: 'فواتير شراء غير مسددة أو مسددة جزئياً', amount: L.suppliers, icon: 'pi-truck' },
+    { key: 'payroll', label: 'رواتب معلّقة', hint: 'مستحقات رواتب لم تُسدَّد بعد', amount: L.payroll, icon: 'pi-users' },
+    { key: 'customers', label: 'أرصدة عملاء دائنة', hint: 'مبالغ يستحقها العملاء على المنشأة', amount: L.customers, icon: 'pi-user' },
+    { key: 'partners', label: 'جاري الشركاء (سالب)', hint: 'مسحوبات أكثر من الإيداعات', amount: L.partners, icon: 'pi-briefcase' },
+  ].filter((r) => Math.abs(r.amount) > 0.0001)
 })
+
+const liabilitiesTotal = computed(() => sheet.value?.liabilities.total_liabilities ?? 0)
+
+const equityTotal = computed(() => sheet.value?.equity ?? 0)
+
+const liabilitiesPlusEquity = computed(() => liabilitiesTotal.value + equityTotal.value)
+
+const isBalanced = computed(() => {
+  const assets = sheet.value?.total_assets ?? 0
+  return Math.abs(assets - liabilitiesPlusEquity.value) < 0.02
+})
+
+const cashAccountCount = computed(() => sheet.value?.assets.length ?? 0)
+
+const fixedAssetCount = computed(() =>
+  fixedAssetsByCategory.value.reduce((s, r) => s + r.count, 0),
+)
 
 onMounted(() => {
   load()
@@ -45,175 +89,289 @@ onMounted(() => {
 </script>
 
 <template>
-  <div dir="rtl" class="report-page">
-    <Card class="mb-4">
-      <template #title>قائمة المركز المالي</template>
-      <template #content>
-        <div class="flex justify-content-end mb-4">
-          <Button label="تحديث" icon="pi pi-refresh" outlined @click="load" />
-        </div>
+  <FinancialReportShell
+    title="قائمة المركز المالي"
+    subtitle="ملخص ما تملكه المنشأة مقابل ما عليها وما يتبقى لأصحابها"
+    icon="pi-chart-bar"
+    :loading="store.loading"
+  >
+    <template #toolbar>
+      <Button
+        label="تحديث التقرير"
+        icon="pi pi-refresh"
+        :loading="store.loading"
+        @click="load"
+      />
+    </template>
 
-        <div v-if="store.loading" class="flex justify-content-center py-8">
-          <i class="pi pi-spin pi-spinner text-4xl text-color-secondary"></i>
-        </div>
-
-        <template v-else-if="store.balanceSheet">
-          <div class="summary-grid mb-4">
-            <div class="summary-card summary-assets">
-              <span class="summary-label">إجمالي الأصول</span>
-              <span class="summary-value">{{ fmt(store.balanceSheet.total_assets) }}</span>
-            </div>
-            <div class="summary-card summary-liabilities">
-              <span class="summary-label">إجمالي الالتزامات</span>
-              <span class="summary-value">{{
-                fmt(store.balanceSheet.liabilities.total_liabilities)
-              }}</span>
-            </div>
-            <div class="summary-card summary-equity">
-              <span class="summary-label">حقوق الملكية</span>
-              <span class="summary-value">{{ fmt(store.balanceSheet.equity) }}</span>
-            </div>
+    <template v-if="sheet">
+      <div class="bs-kpi-row">
+        <div class="bs-kpi bs-kpi--assets">
+          <div class="bs-kpi-icon"><i class="pi pi-wallet"></i></div>
+          <div class="bs-kpi-body">
+            <span class="bs-kpi-label">الأصول</span>
+            <span class="bs-kpi-value">{{ fmt(sheet.total_assets) }}</span>
           </div>
+        </div>
+        <div class="bs-kpi bs-kpi--liab">
+          <div class="bs-kpi-icon"><i class="pi pi-book"></i></div>
+          <div class="bs-kpi-body">
+            <span class="bs-kpi-label">الالتزامات</span>
+            <span class="bs-kpi-value">{{ fmt(liabilitiesTotal) }}</span>
+          </div>
+        </div>
+        <div class="bs-kpi bs-kpi--equity">
+          <div class="bs-kpi-icon"><i class="pi pi-chart-line"></i></div>
+          <div class="bs-kpi-body">
+            <span class="bs-kpi-label">حقوق الملكية</span>
+            <span class="bs-kpi-value">{{ fmt(equityTotal) }}</span>
+          </div>
+        </div>
+      </div>
 
-          <h3 class="table-section-title">الأصول — الحسابات المالية</h3>
-          <p class="section-hint text-muted">
-            الرصيد = مجموع الإيرادات − مجموع المصروفات لكل حساب.
-          </p>
-          <DataTable
-            :value="store.balanceSheet.assets"
-            data-key="id"
-            striped-rows
-            responsive-layout="scroll"
-            class="p-datatable-sm mb-4"
-          >
-            <Column field="name" header="اسم الحساب" />
-            <Column field="type" header="النوع">
-              <template #body="{ data }">{{ financialAccountTypeLabel(data.type) }}</template>
-            </Column>
-            <Column field="balance" header="الرصيد">
-              <template #body="{ data }">{{ fmt(data.balance) }}</template>
-            </Column>
-          </DataTable>
+      <div class="bs-equation" :class="{ 'bs-equation--ok': isBalanced }">
+        <div class="bs-equation-formula">
+          <div class="bs-eq-part bs-eq-part--assets">
+            <span class="bs-eq-label">الأصول</span>
+            <span class="bs-eq-num">{{ fmt(sheet.total_assets) }}</span>
+          </div>
+          <span class="bs-eq-op">=</span>
+          <div class="bs-eq-part bs-eq-part--liab">
+            <span class="bs-eq-label">الالتزامات</span>
+            <span class="bs-eq-num">{{ fmt(liabilitiesTotal) }}</span>
+          </div>
+          <span class="bs-eq-op">+</span>
+          <div class="bs-eq-part bs-eq-part--equity">
+            <span class="bs-eq-label">حقوق الملكية</span>
+            <span class="bs-eq-num">{{ fmt(equityTotal) }}</span>
+          </div>
+        </div>
+        <Tag
+          v-if="isBalanced"
+          value="المعادلة متوازنة"
+          severity="success"
+          rounded
+          icon="pi pi-check-circle"
+        />
+        <Tag
+          v-else
+          value="راجع الأرقام"
+          severity="warn"
+          rounded
+          icon="pi pi-exclamation-triangle"
+        />
+      </div>
 
-          <h3 class="table-section-title">الالتزامات</h3>
-          <p class="section-hint text-muted">
-            ذمم الموردين؛ رواتب معلّقة؛ أرصدة عملاء دائنة؛ وجاري شركاء سالب (مسحوبات أكثر من
-            إيداعات).
-          </p>
-          <DataTable
-            :value="liabilityRows"
-            data-key="key"
-            striped-rows
-            responsive-layout="scroll"
-            class="p-datatable-sm mb-4"
-          >
-            <Column field="label" header="البند" />
-            <Column field="amount" header="المبلغ">
-              <template #body="{ data }">{{ fmt(data.amount) }}</template>
-            </Column>
-          </DataTable>
+      <div class="bs-columns">
+        <section class="bs-panel bs-panel--assets">
+          <header class="bs-panel-head">
+            <div class="bs-panel-head-main">
+              <span class="bs-panel-icon"><i class="pi pi-arrow-up-right"></i></span>
+              <h2>الأصول</h2>
+            </div>
+            <span class="bs-panel-total">{{ fmt(sheet.total_assets) }}</span>
+          </header>
 
-          <div class="equity-banner">
-            <span class="equity-label">حقوق الملكية</span>
-            <span
-              class="equity-sub text-muted"
-              v-if="(store.balanceSheet.partners_equity ?? 0) > 0"
+          <div class="bs-section">
+            <button
+              type="button"
+              class="bs-section-head"
+              :aria-expanded="showCashDetails"
+              @click="showCashDetails = !showCashDetails"
             >
-              يشمل حقوق شركاء (جاري موجب): {{ fmt(store.balanceSheet.partners_equity) }}
-            </span>
-            <span class="equity-value">{{ fmt(store.balanceSheet.equity) }}</span>
+              <span class="bs-section-icon bs-section-icon--cash"><i class="pi pi-money-bill"></i></span>
+              <span class="bs-section-info">
+                <span class="bs-section-title">نقدية وبنوك</span>
+                <span class="bs-section-meta">{{ cashAccountCount }} حساب</span>
+              </span>
+              <span class="bs-section-amount">{{ fmt(financialAssetsTotal) }}</span>
+              <i class="pi bs-section-chevron" :class="showCashDetails ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+            </button>
+            <Transition name="bs-expand">
+              <div v-show="showCashDetails" class="bs-section-body">
+                <p v-if="!sheet.assets.length" class="bs-empty">
+                  <i class="pi pi-inbox"></i>
+                  لا توجد حسابات مالية
+                </p>
+                <div v-else class="bs-table-wrap">
+                  <table class="bs-table">
+                    <thead>
+                      <tr>
+                        <th>الحساب</th>
+                        <th>النوع</th>
+                        <th class="bs-td-num">الرصيد</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in sheet.assets" :key="row.id">
+                        <td class="bs-td-strong">{{ row.name }}</td>
+                        <td class="bs-td-muted">{{ financialAccountTypeLabel(row.type) }}</td>
+                        <td class="bs-td-num">{{ fmt(row.balance) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Transition>
           </div>
-        </template>
-      </template>
-    </Card>
-  </div>
+
+          <div class="bs-section">
+            <button
+              type="button"
+              class="bs-section-head"
+              :aria-expanded="showFixedDetails"
+              @click="showFixedDetails = !showFixedDetails"
+            >
+              <span class="bs-section-icon bs-section-icon--fixed"><i class="pi pi-building"></i></span>
+              <span class="bs-section-info">
+                <span class="bs-section-title">أصول ثابتة</span>
+                <span class="bs-section-meta">{{ fixedAssetCount }} أصل</span>
+              </span>
+              <span class="bs-section-amount">{{ fmt(fixedAssetsTotal) }}</span>
+              <i class="pi bs-section-chevron" :class="showFixedDetails ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+            </button>
+            <Transition name="bs-expand">
+              <div v-show="showFixedDetails" class="bs-section-body">
+                <p v-if="!fixedAssetsByCategory.length" class="bs-empty">
+                  <i class="pi pi-inbox"></i>
+                  لا توجد أصول ثابتة — أضفها من وحدة الأصول
+                </p>
+                <div v-else class="bs-table-wrap">
+                  <table class="bs-table">
+                    <thead>
+                      <tr>
+                        <th>فئة الأصل</th>
+                        <th class="bs-td-count">العدد</th>
+                        <th class="bs-td-num">القيمة</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in fixedAssetsByCategory" :key="row.key">
+                        <td class="bs-td-strong">{{ row.category }}</td>
+                        <td class="bs-td-count">
+                          <span class="bs-badge">{{ row.count }}</span>
+                        </td>
+                        <td class="bs-td-num">{{ fmt(row.total) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Transition>
+          </div>
+
+          <div class="bs-section">
+            <button
+              type="button"
+              class="bs-section-head"
+              :aria-expanded="showStockDetails"
+              @click="showStockDetails = !showStockDetails"
+            >
+              <span class="bs-section-icon bs-section-icon--stock"><i class="pi pi-box"></i></span>
+              <span class="bs-section-info">
+                <span class="bs-section-title">قيمة المخزون</span>
+                <span class="bs-section-meta">بالتكلفة (شراء)</span>
+              </span>
+              <span class="bs-section-amount">{{ fmt(stockTotal) }}</span>
+              <i class="pi bs-section-chevron" :class="showStockDetails ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+            </button>
+            <Transition name="bs-expand">
+              <div v-show="showStockDetails" class="bs-section-body">
+                <p class="bs-stock-formula text-sm text-color-secondary m-0 mb-3">
+                  قيمة المخزون = (الكمية الافتتاحية × سعر الشراء) + مشتريات مستلمة − مبيعات مصروفة (تكلفة)
+                </p>
+                <ul class="bs-stock-breakdown">
+                  <li>
+                    <span>رصيد افتتاحي (كمية × سعر شراء)</span>
+                    <span class="bs-stock-amount">{{ fmt(stock.opening_value) }}</span>
+                  </li>
+                  <li>
+                    <span>مشتريات مستلمة (أصناف تم استلامها فقط)</span>
+                    <span class="bs-stock-amount">{{ fmt(stock.purchases) }}</span>
+                  </li>
+                  <li class="bs-stock-breakdown--deduct">
+                    <span>مبيعات مصروفة (أصناف تم صرفها فقط — بالتكلفة)</span>
+                    <span class="bs-stock-amount">− {{ fmt(stock.sales_cost) }}</span>
+                  </li>
+                  <li class="bs-stock-breakdown--total">
+                    <span>قيمة المخزون</span>
+                    <span class="bs-stock-amount">{{ fmt(stock.total) }}</span>
+                  </li>
+                </ul>
+              </div>
+            </Transition>
+          </div>
+
+          <footer class="bs-panel-foot bs-panel-foot--assets">
+            <span>إجمالي الأصول</span>
+            <span>{{ fmt(sheet.total_assets) }}</span>
+          </footer>
+        </section>
+
+        <section class="bs-panel bs-panel--claims">
+          <header class="bs-panel-head">
+            <div class="bs-panel-head-main">
+              <span class="bs-panel-icon"><i class="pi pi-arrow-down-left"></i></span>
+              <h2>الالتزامات وحقوق الملكية</h2>
+            </div>
+            <span class="bs-panel-total">{{ fmt(liabilitiesPlusEquity) }}</span>
+          </header>
+
+          <div class="bs-section">
+            <div class="bs-section-head bs-section-head--static">
+              <span class="bs-section-icon bs-section-icon--liab"><i class="pi pi-file-edit"></i></span>
+              <span class="bs-section-info">
+                <span class="bs-section-title">الالتزامات</span>
+              </span>
+              <span class="bs-section-amount">{{ fmt(liabilitiesTotal) }}</span>
+            </div>
+            <div class="bs-section-body bs-section-body--flush">
+              <p v-if="!liabilityRows.length" class="bs-empty">
+                <i class="pi pi-check-circle"></i>
+                لا توجد التزامات مسجّلة
+              </p>
+              <ul v-else class="bs-liab-list">
+                <li v-for="row in liabilityRows" :key="row.key" class="bs-liab-item">
+                  <span class="bs-liab-icon"><i class="pi" :class="row.icon"></i></span>
+                  <div class="bs-liab-text">
+                    <span class="bs-liab-label">{{ row.label }}</span>
+                    <small>{{ row.hint }}</small>
+                  </div>
+                  <span class="bs-liab-amount">{{ fmt(row.amount) }}</span>
+                </li>
+              </ul>
+              <div v-if="liabilityRows.length" class="bs-inline-total">
+                <span>مجموع الالتزامات</span>
+                <span>{{ fmt(liabilitiesTotal) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bs-section bs-section--equity">
+            <div class="bs-section-head bs-section-head--static">
+              <span class="bs-section-icon bs-section-icon--equity"><i class="pi pi-shield"></i></span>
+              <span class="bs-section-info">
+                <span class="bs-section-title">حقوق الملكية</span>
+              </span>
+              <span class="bs-section-amount">{{ fmt(equityTotal) }}</span>
+            </div>
+            <div class="bs-section-body">
+              <p class="bs-equity-desc">
+                صافي ما يعود للمنشأة بعد خصم الالتزامات من الأصول.
+              </p>
+              <p v-if="(sheet.partners_equity ?? 0) > 0" class="bs-equity-extra">
+                <i class="pi pi-info-circle"></i>
+                يشمل جاري شركاء موجب: <strong>{{ fmt(sheet.partners_equity) }}</strong>
+              </p>
+            </div>
+          </div>
+
+          <footer class="bs-panel-foot bs-panel-foot--claims">
+            <span>الالتزامات + حقوق الملكية</span>
+            <span>{{ fmt(liabilitiesPlusEquity) }}</span>
+          </footer>
+        </section>
+      </div>
+    </template>
+  </FinancialReportShell>
 </template>
-
-<style scoped>
-.report-page {
-  max-width: 1200px;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-}
-
-.summary-card {
-  border-radius: 0.75rem;
-  padding: 1rem 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  border: 1px solid var(--surface-border);
-  background: var(--surface-card);
-}
-
-.summary-assets {
-  border-right: 4px solid #22c55e;
-}
-
-.summary-liabilities {
-  border-right: 4px solid #eab308;
-}
-
-.summary-equity {
-  border-right: 4px solid #008cff;
-}
-
-.summary-label {
-  font-size: 0.85rem;
-  color: var(--text-color-secondary);
-}
-
-.summary-value {
-  font-size: 1.25rem;
-  font-weight: 700;
-}
-
-.table-section-title {
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin: 0 0 0.35rem;
-}
-
-.section-hint {
-  font-size: 0.85rem;
-  margin: 0 0 0.75rem;
-  color: var(--text-color-secondary);
-}
-
-.text-muted {
-  color: var(--text-color-secondary);
-}
-
-.equity-banner {
-  margin-top: 0.5rem;
-  padding: 1rem 1.25rem;
-  border-radius: 0.75rem;
-  background: linear-gradient(135deg, #f0f7ff 0%, #e8f4ff 100%);
-  border: 1px solid #b3dfff;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.equity-label {
-  font-size: 0.9rem;
-  color: #0066cc;
-  font-weight: 600;
-}
-
-.equity-sub {
-  font-size: 0.8rem;
-  display: block;
-  margin-bottom: 0.25rem;
-}
-
-.equity-value {
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: #2d3748;
-}
-</style>

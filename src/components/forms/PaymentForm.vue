@@ -2,6 +2,7 @@
 import { reactive, computed, watch } from 'vue'
 import { formatDateLocal } from '@/lib/date'
 import type { PaymentPayload } from '@/types'
+import { formatMoney } from '@/lib/format'
 
 const props = defineProps<{
   modelValue?: Partial<PaymentPayload> | null
@@ -79,7 +80,7 @@ const cashAmount = computed(() => Math.max(0, form.amount - (form.balance_amount
 
 const remainingHint = computed(() => {
   if (props.maxAmount == null || props.maxAmount <= 0) return ''
-  return `المتبقي على الفاتورة: ${props.maxAmount.toLocaleString('ar-EG', { minimumFractionDigits: 2 })}`
+  return `المتبقي على الفاتورة: ${formatMoney(props.maxAmount)}`
 })
 
 const canSubmit = computed(() => {
@@ -174,12 +175,12 @@ function onCancel() {
         />
         <small class="text-color-secondary">
           يمكن خصمه من الرصيد:
-          {{ balanceApplyCap.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+          {{formatMoney(balanceApplyCap) }}
         </small>
       </div>
       <div v-if="cashAmount > 0.0001" class="text-sm text-color-secondary">
         النقدي (حساب مالي):
-        {{ cashAmount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+        {{formatMoney(cashAmount) }}
       </div>
       <div v-else class="text-sm text-color-secondary">الدفعة بالكامل من الرصيد (لا يُسجّل نقدي)</div>
     </template>

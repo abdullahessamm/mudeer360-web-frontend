@@ -7,6 +7,7 @@ import { useEmployeesStore } from '@/stores/employees'
 import { useDashboardStore } from '@/stores/dashboard'
 import EmployeeForm from '@/components/forms/EmployeeForm.vue'
 import type { Employee } from '@/types'
+import { formatMoney } from '@/lib/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -151,7 +152,7 @@ onMounted(() => {
           </Column>
           <Column field="salary" header="الراتب">
             <template #body="{ data }">
-              {{ data.salary.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+              {{formatMoney(data.salary) }}
             </template>
           </Column>
           <Column header="الإجراءات" style="width: 280px">

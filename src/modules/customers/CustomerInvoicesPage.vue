@@ -4,6 +4,7 @@ import html2pdf from 'html2pdf.js'
 import { useRoute, useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { formatDateLocal, getCurrentMonthRange } from '@/lib/date'
+import { formatMoney, formatIssuedAt } from '@/lib/format'
 import {
   getDispenseStats,
   DISPENSE_STATUS_LABELS,
@@ -52,10 +53,7 @@ const pdfExporting = ref(false)
 const issuedAtTimestamp = ref(Date.now())
 
 const issuedAtLabel = computed(() =>
-  new Date(issuedAtTimestamp.value).toLocaleString('ar-EG', {
-    dateStyle: 'long',
-    timeStyle: 'short',
-  }),
+  formatIssuedAt(issuedAtTimestamp.value),
 )
 
 const chargeDialogVisible = ref(false)
@@ -234,7 +232,7 @@ function goBack() {
 }
 
 function formatAmount(n: number) {
-  return n.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+  return formatMoney(n)
 }
 
 function sanitizeFilename(name: string) {

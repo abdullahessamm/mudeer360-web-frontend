@@ -7,6 +7,7 @@ import { financialAccountTypeLabel } from '@/lib/financialAccountTypes'
 import { useFinancialAccountsStore } from '@/stores/financialAccounts'
 import FinancialAccountForm from '@/components/forms/FinancialAccountForm.vue'
 import type { FinancialAccount } from '@/types'
+import { formatMoney } from '@/lib/format'
 
 const confirm = useConfirm()
 const store = useFinancialAccountsStore()
@@ -139,11 +140,7 @@ onMounted(() => {
                   (data.computed_balance ?? 0) >= 0 ? 'text-green-600' : 'text-red-600',
                 ]"
               >
-                {{
-                  (data.computed_balance ?? 0).toLocaleString('ar-EG', {
-                    minimumFractionDigits: 2,
-                  })
-                }}
+                {{ formatMoney(data.computed_balance ?? 0) }}
               </span>
             </template>
           </Column>

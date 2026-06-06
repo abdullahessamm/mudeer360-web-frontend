@@ -5,6 +5,7 @@ import { showError, showSuccess } from '@/composables/useToast'
 import { formatDateLocal } from '@/lib/date'
 import { usePartnersStore, type Partner } from '@/stores/partners'
 import { useFinancialAccountsStore } from '@/stores/financialAccounts'
+import { formatMoney } from '@/lib/format'
 
 const router = useRouter()
 const store = usePartnersStore()
@@ -42,7 +43,7 @@ const accountOptions = computed(() =>
 )
 
 function fmt(n: number) {
-  return n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return formatMoney(n)
 }
 
 function typeLabel(t: 'withdraw' | 'deposit') {

@@ -12,6 +12,7 @@ import { useFinancialAccountsStore } from '@/stores/financialAccounts'
 import EmployeeTransactionForm from '@/components/forms/EmployeeTransactionForm.vue'
 import EmployeeAttendanceForm from '@/components/forms/EmployeeAttendanceForm.vue'
 import type { EmployeeAttendance, EmployeeTransaction, Payroll } from '@/types'
+import { formatMoney } from '@/lib/format'
 
 const monthLabels: Record<number, string> = {
   1: 'يناير',
@@ -444,7 +445,7 @@ onMounted(loadData)
           <h2 class="m-0">{{ employee.name }}</h2>
           <p class="text-color-secondary m-0 mt-1">
             {{ employee.position ?? '—' }} · الراتب:
-            {{ employee.salary.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+            {{formatMoney(employee.salary) }}
           </p>
         </div>
       </div>
@@ -504,7 +505,7 @@ onMounted(loadData)
               </Column>
               <Column field="amount" header="المبلغ">
                 <template #body="{ data }">
-                  {{ data.amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                  {{formatMoney(data.amount) }}
                 </template>
               </Column>
               <Column field="description" header="الوصف">
@@ -680,22 +681,22 @@ onMounted(loadData)
               </Column>
               <Column field="total_bonus" header="إجمالي المكافآت">
                 <template #body="{ data }">
-                  {{ data.total_bonus.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                  {{formatMoney(data.total_bonus) }}
                 </template>
               </Column>
               <Column field="total_deductions" header="إجمالي الخصومات">
                 <template #body="{ data }">
-                  {{ data.total_deductions.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                  {{formatMoney(data.total_deductions) }}
                 </template>
               </Column>
               <Column field="total_loans" header="إجمالي السلف">
                 <template #body="{ data }">
-                  {{ data.total_loans.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                  {{formatMoney(data.total_loans) }}
                 </template>
               </Column>
               <Column field="net_salary" header="صافي الراتب">
                 <template #body="{ data }">
-                  {{ data.net_salary.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+                  {{formatMoney(data.net_salary) }}
                 </template>
               </Column>
               <Column field="status" header="الحالة" style="width: 100px">
@@ -865,9 +866,7 @@ onMounted(loadData)
         <div class="field">
           <label>صافي الراتب</label>
           <InputText
-            :model-value="
-              payrollToPay.net_salary.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
-            "
+            :model-value="formatMoney(payrollToPay.net_salary)"
             class="w-full"
             disabled
           />

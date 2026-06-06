@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import html2pdf from 'html2pdf.js'
 import { formatDateLocal, getCurrentMonthRange } from '@/lib/date'
+import { formatMoney, formatIssuedAt } from '@/lib/format'
 import {
   getDispenseStats,
   DISPENSE_STATUS_LABELS,
@@ -77,10 +78,7 @@ const pdfExporting = ref(false)
 const issuedAtTimestamp = ref(Date.now())
 
 const issuedAtLabel = computed(() =>
-  new Date(issuedAtTimestamp.value).toLocaleString('ar-EG', {
-    dateStyle: 'long',
-    timeStyle: 'short',
-  }),
+  formatIssuedAt(issuedAtTimestamp.value),
 )
 
 const customerOptions = computed(() => [
@@ -112,7 +110,7 @@ const statusSeverity = (status: string) =>
   ({ paid: 'success', partial: 'warn', unpaid: 'danger' })[status] ?? 'secondary'
 
 function formatAmount(n: number) {
-  return n.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+  return formatMoney(n)
 }
 
 function sanitizeFilename(name: string) {
@@ -542,7 +540,7 @@ onMounted(async () => {
         <template #content>
           <div class="text-color-secondary text-sm mb-1">الإجمالي</div>
           <div class="text-xl font-bold">
-            {{ store.summary.total_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+            {{formatMoney(store.summary.total_amount) }}
           </div>
         </template>
       </Card>
@@ -550,7 +548,7 @@ onMounted(async () => {
         <template #content>
           <div class="text-color-secondary text-sm mb-1">المدفوع</div>
           <div class="text-xl font-bold text-green-600">
-            {{ store.summary.paid_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+            {{formatMoney(store.summary.paid_amount) }}
           </div>
         </template>
       </Card>
@@ -558,9 +556,7 @@ onMounted(async () => {
         <template #content>
           <div class="text-color-secondary text-sm mb-1">المتبقي</div>
           <div class="text-xl font-bold text-amber-600">
-            {{
-              store.summary.remaining_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
-            }}
+            {{ formatMoney(store.summary.remaining_amount) }}
           </div>
         </template>
       </Card>
@@ -568,11 +564,7 @@ onMounted(async () => {
         <template #content>
           <div class="text-color-secondary text-sm mb-1">إجمالي المصروف</div>
           <div class="text-xl font-bold text-blue-600">
-            {{
-              store.summary.total_dispensed_amount.toLocaleString('ar-EG', {
-                minimumFractionDigits: 2,
-              })
-            }}
+            {{ formatMoney(store.summary.total_dispensed_amount) }}
           </div>
         </template>
       </Card>
@@ -580,11 +572,7 @@ onMounted(async () => {
         <template #content>
           <div class="text-color-secondary text-sm mb-1">المتبقي للصرف</div>
           <div class="text-xl font-bold text-cyan-600">
-            {{
-              store.summary.total_remaining_dispense.toLocaleString('ar-EG', {
-                minimumFractionDigits: 2,
-              })
-            }}
+            {{ formatMoney(store.summary.total_remaining_dispense) }}
           </div>
         </template>
       </Card>
@@ -592,7 +580,7 @@ onMounted(async () => {
         <template #content>
           <div class="text-color-secondary text-sm mb-1">إجمالي المستحقات</div>
           <div class="text-xl font-bold text-orange-600">
-            {{ store.summary.total_dues.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+            {{formatMoney(store.summary.total_dues) }}
           </div>
         </template>
       </Card>
@@ -633,12 +621,12 @@ onMounted(async () => {
           </Column>
           <Column field="total_amount" header="الإجمالي">
             <template #body="{ data }">
-              {{ data.total_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+              {{formatMoney(data.total_amount) }}
             </template>
           </Column>
           <Column field="paid_amount" header="المدفوع">
             <template #body="{ data }">
-              {{ data.paid_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 }) }}
+              {{formatMoney(data.paid_amount) }}
             </template>
           </Column>
           <Column field="status" header="الحالة">
@@ -817,24 +805,17 @@ onMounted(async () => {
         <div class="flex gap-4">
           <div>
             <span class="text-color-secondary">الإجمالي:</span>
-            {{
-              store.currentInvoice.total_amount.toLocaleString('ar-EG', {
-                minimumFractionDigits: 2,
-              })
-            }}
+            {{ formatMoney(store.currentInvoice.total_amount) }}
           </div>
           <div>
             <span class="text-color-secondary">المدفوع:</span>
-            {{
-              store.currentInvoice.paid_amount.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
-            }}
+            {{ formatMoney(store.currentInvoice.paid_amount) }}
           </div>
           <div v-if="store.currentInvoice.status !== 'paid'">
             <span class="text-color-secondary">المتبقي:</span>
             {{
-              (store.currentInvoice.total_amount - store.currentInvoice.paid_amount).toLocaleString(
-                'ar-EG',
-                { minimumFractionDigits: 2 },
+              formatMoney(
+                store.currentInvoice.total_amount - store.currentInvoice.paid_amount,
               )
             }}
           </div>
@@ -937,15 +918,11 @@ onMounted(async () => {
             </Column>
             <Column field="quantity" header="الكمية" />
             <Column field="unit_price" header="سعر الوحدة">
-              <template #body="{ data }">{{
-                data.unit_price?.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
-              }}</template>
+              <template #body="{ data }">{{ formatMoney(data.unit_price) }}</template>
             </Column>
             <Column field="total_price" header="المجموع">
               <template #body="{ data }">{{
-                (data.total_price ?? data.quantity * data.unit_price)?.toLocaleString('ar-EG', {
-                  minimumFractionDigits: 2,
-                })
+                formatMoney(data.total_price ?? data.quantity * data.unit_price)
               }}</template>
             </Column>
             <Column header="خصم من المخزون" style="width: 7rem">

@@ -5,6 +5,53 @@ import { unwrapPayload, parsePaginatedResponse, getErrorMessage } from '@/api/ut
 import type { Asset } from '@/types'
 import type { PaginatedPayload } from '@/types'
 
+export type AssetWritePayload = Partial<Asset> & {
+  auto_generate_code?: boolean
+  create_financial_transaction?: boolean
+  financial_account_id?: number | null
+}
+
+/** Fixed assets on balance sheet: sum of purchase_price grouped by asset category. */
+export interface FixedAssetsCategoryRow {
+  key: string
+  asset_category_id: number | null
+  category: string
+  count: number
+  total: number
+}
+
+export interface FixedAssetsSummary {
+  by_category: FixedAssetsCategoryRow[]
+  total: number
+}
+
+function summarizeFixedAssets(assets: Asset[]): FixedAssetsSummary {
+  const active = assets.filter((a) => a.status !== 'excluded')
+  const map = new Map<string, FixedAssetsCategoryRow>()
+
+  for (const a of active) {
+    const categoryId = a.asset_category_id ?? null
+    const key = categoryId != null ? String(categoryId) : '_none'
+    const category = a.category?.name?.trim() || 'بدون فئة'
+    const row = map.get(key) ?? {
+      key,
+      asset_category_id: categoryId,
+      category,
+      count: 0,
+      total: 0,
+    }
+    row.count += 1
+    row.total += a.purchase_price
+    map.set(key, row)
+  }
+
+  const by_category = [...map.values()].sort((a, b) =>
+    a.category.localeCompare(b.category, 'ar'),
+  )
+  const total = by_category.reduce((sum, row) => sum + row.total, 0)
+  return { by_category, total }
+}
+
 export const useAssetsStore = defineStore('assets', () => {
   const items = ref<Asset[]>([])
   const meta = ref<PaginatedPayload<Asset>['meta'] | null>(null)
@@ -43,22 +90,46 @@ export const useAssetsStore = defineStore('assets', () => {
     }
   }
 
-  async function create(asset: Omit<Asset, 'id'>) {
+  /** Build body matching StoreAssetRequest / UpdateAssetRequest validation. */
+  function buildAssetApiPayload(asset: AssetWritePayload): Record<string, unknown> {
+    const createFt = asset.create_financial_transaction === true
+    const payload: Record<string, unknown> = {
+      name: asset.name,
+      purchase_price: asset.purchase_price,
+      purchase_date: asset.purchase_date,
+      status: asset.status,
+      create_financial_transaction: createFt,
+    }
+
+    if (asset.asset_category_id != null) {
+      payload.asset_category_id = asset.asset_category_id
+    }
+
+    const location = asset.location?.trim()
+    if (location) payload.location = location
+
+    const notes = asset.notes?.trim()
+    if (notes) payload.notes = notes
+
+    if (createFt && asset.financial_account_id != null) {
+      payload.financial_account_id = asset.financial_account_id
+    }
+
+    if (asset.auto_generate_code) {
+      payload.auto_generate_code = true
+    } else {
+      const code = asset.code?.trim()
+      if (code) payload.code = code
+    }
+
+    return payload
+  }
+
+  async function create(asset: Omit<Asset, 'id'> & AssetWritePayload) {
     loading.value = true
     error.value = null
     try {
-      const payload: Record<string, unknown> = {
-        name: asset.name,
-        asset_category_id: asset.asset_category_id ?? null,
-        purchase_price: asset.purchase_price,
-        purchase_date: asset.purchase_date,
-        status: asset.status,
-        location: asset.location?.trim() || null,
-        notes: asset.notes?.trim() || null,
-      }
-      const a = asset as { auto_generate_code?: boolean; code?: string }
-      if (a.auto_generate_code) payload.auto_generate_code = true
-      else if (a.code != null && String(a.code).trim() !== '') payload.code = String(a.code).trim()
+      const payload = buildAssetApiPayload(asset)
       const { data } = await apiClient.post('/api/assets', payload)
       const created = unwrapPayload<Asset>(data)
       items.value = [created, ...items.value]
@@ -71,22 +142,11 @@ export const useAssetsStore = defineStore('assets', () => {
     }
   }
 
-  async function update(id: number, asset: Partial<Asset>) {
+  async function update(id: number, asset: AssetWritePayload) {
     loading.value = true
     error.value = null
     try {
-      const payload: Record<string, unknown> = {
-        name: asset.name,
-        asset_category_id: asset.asset_category_id ?? null,
-        purchase_price: asset.purchase_price,
-        purchase_date: asset.purchase_date,
-        status: asset.status,
-        location: asset.location?.trim() || null,
-        notes: asset.notes?.trim() || null,
-      }
-      const a = asset as { auto_generate_code?: boolean; code?: string }
-      if (a.auto_generate_code) payload.auto_generate_code = true
-      else if (a.code !== undefined) payload.code = a.code
+      const payload = buildAssetApiPayload(asset)
       const { data } = await apiClient.put(`/api/assets/${id}`, payload)
       const updated = unwrapPayload<Asset>(data)
       const idx = items.value.findIndex((x) => x.id === id)
@@ -116,6 +176,30 @@ export const useAssetsStore = defineStore('assets', () => {
 
   const byId = computed(() => (id: number) => items.value.find((x) => x.id === id))
 
+  /** All assets from the module (all pages). Does not toggle list loading. */
+  async function fetchAllForReport(): Promise<Asset[]> {
+    const all: Asset[] = []
+    try {
+      let page = 1
+      let last = 1
+      do {
+        const { data } = await apiClient.get('/api/assets', { params: { page, per_page: 100 } })
+        const payload = parsePaginatedResponse<Asset>(data)
+        all.push(...(payload.data ?? []))
+        last = payload.meta?.last_page ?? 1
+        page += 1
+      } while (page <= last)
+    } catch {
+      return all
+    }
+    return all
+  }
+
+  /** Sum assets value (purchase_price) for قائمة المركز المالي — أصول ثابتة. */
+  async function getFixedAssetsSummary(): Promise<FixedAssetsSummary> {
+    return summarizeFixedAssets(await fetchAllForReport())
+  }
+
   function clearError() {
     error.value = null
   }
@@ -134,6 +218,8 @@ export const useAssetsStore = defineStore('assets', () => {
     update,
     remove,
     byId,
+    fetchAllForReport,
+    getFixedAssetsSummary,
     clearError,
   }
 })

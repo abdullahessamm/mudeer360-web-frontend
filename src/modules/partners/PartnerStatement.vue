@@ -5,6 +5,7 @@ import { showError, showSuccess } from '@/composables/useToast'
 import html2pdf from 'html2pdf.js'
 import { formatDateLocal } from '@/lib/date'
 import { usePartnersStore, type PartnerStatementPayload } from '@/stores/partners'
+import { formatMoney, formatIssuedAt, formatDateLong } from '@/lib/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -41,10 +42,7 @@ const pdfExporting = ref(false)
 const issuedAtTimestamp = ref(Date.now())
 
 const issuedAtLabel = computed(() =>
-  new Date(issuedAtTimestamp.value).toLocaleString('ar-EG', {
-    dateStyle: 'long',
-    timeStyle: 'short',
-  }),
+  formatIssuedAt(issuedAtTimestamp.value),
 )
 
 function sanitizeFilename(name: string) {
@@ -76,7 +74,7 @@ async function downloadPdf() {
 }
 
 function fmt(n: number) {
-  return n.toLocaleString('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return formatMoney(n)
 }
 
 function typeLabel(t: string) {
@@ -114,8 +112,8 @@ const printDateRangeLabel = computed(() => {
   const from = new Date(`${p.date_from}T12:00:00`)
   const to = new Date(`${p.date_to}T12:00:00`)
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return ''
-  const a = from.toLocaleDateString('ar-EG', { dateStyle: 'long' })
-  const b = to.toLocaleDateString('ar-EG', { dateStyle: 'long' })
+  const a = formatDateLong(from)
+  const b = formatDateLong(to)
   return `من ${a} إلى ${b}`
 })
 

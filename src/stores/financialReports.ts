@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { apiClient } from '@/api/axios'
 import { unwrapPayload, getErrorMessage } from '@/api/utils'
+import type { FixedAssetsSummary } from '@/stores/assets'
 
 export interface IncomeStatementRow {
   type: string
@@ -40,6 +41,17 @@ export interface BalanceSheetAssetRow {
   balance: number
 }
 
+/** Fixed assets (أصول ثابتة) — summed from assets module. */
+export type BalanceSheetFixedAssets = FixedAssetsSummary
+
+/** Inventory at purchase cost: opening + received purchases − dispensed sales (cost). */
+export interface BalanceSheetStock {
+  opening_value: number
+  purchases: number
+  sales_cost: number
+  total: number
+}
+
 export interface BalanceSheetLiabilities {
   suppliers: number
   payroll: number
@@ -50,10 +62,39 @@ export interface BalanceSheetLiabilities {
 
 export interface BalanceSheetPayload {
   assets: BalanceSheetAssetRow[]
+  /** Sum of financial account balances (نقدية وبنوك). */
+  financial_assets_total?: number
+  fixed_assets?: BalanceSheetFixedAssets
+  stock?: BalanceSheetStock
   total_assets: number
   liabilities: BalanceSheetLiabilities
   partners_equity: number
   equity: number
+}
+
+function normalizeBalanceSheet(payload: BalanceSheetPayload): BalanceSheetPayload {
+  const financialTotal =
+    payload.financial_assets_total ?? payload.assets.reduce((s, r) => s + r.balance, 0)
+  const fixed: BalanceSheetFixedAssets = payload.fixed_assets ?? {
+    by_category: [],
+    total: 0,
+  }
+  const stock: BalanceSheetStock = payload.stock ?? {
+    opening_value: 0,
+    purchases: 0,
+    sales_cost: 0,
+    total: 0,
+  }
+  const total_assets =
+    payload.total_assets ?? financialTotal + fixed.total + stock.total
+
+  return {
+    ...payload,
+    financial_assets_total: financialTotal,
+    fixed_assets: fixed,
+    stock,
+    total_assets,
+  }
 }
 
 export const useFinancialReportsStore = defineStore('financialReports', () => {
@@ -105,7 +146,7 @@ export const useFinancialReportsStore = defineStore('financialReports', () => {
     error.value = null
     try {
       const { data } = await apiClient.get('/api/reports/balance-sheet')
-      const payload = unwrapPayload<BalanceSheetPayload>(data)
+      const payload = normalizeBalanceSheet(unwrapPayload<BalanceSheetPayload>(data))
       balanceSheet.value = payload
       return payload
     } catch (e: unknown) {

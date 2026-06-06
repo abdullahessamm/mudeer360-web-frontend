@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showError } from '@/composables/useToast'
+import FinancialReportShell from '@/components/reports/FinancialReportShell.vue'
+import { formatNumber, formatQty } from '@/lib/format'
 import { useDashboardStore } from '@/stores/dashboard'
 
 const router = useRouter()
@@ -20,14 +22,30 @@ watch(
 const stats = computed(() => {
   const d = dashboardStore.data
   return [
-    { title: 'إجمالي المنتجات', value: String(d?.products_count ?? 0), icon: 'pi pi-box' },
-    { title: 'إجمالي الموردين', value: String(d?.suppliers_count ?? 0), icon: 'pi pi-users' },
+    {
+      title: 'إجمالي المنتجات',
+      value: formatNumber(d?.products_count ?? 0),
+      icon: 'pi pi-box',
+      kpi: 'bs-kpi--neutral',
+    },
+    {
+      title: 'إجمالي الموردين',
+      value: formatNumber(d?.suppliers_count ?? 0),
+      icon: 'pi pi-users',
+      kpi: 'bs-kpi--neutral',
+    },
     {
       title: 'فواتير البيع',
-      value: String(d?.sales_invoices_count ?? 0),
+      value: formatNumber(d?.sales_invoices_count ?? 0),
       icon: 'pi pi-shopping-cart',
+      kpi: 'bs-kpi--income',
     },
-    { title: 'فواتير الشراء', value: String(d?.purchase_invoices_count ?? 0), icon: 'pi pi-truck' },
+    {
+      title: 'فواتير الشراء',
+      value: formatNumber(d?.purchase_invoices_count ?? 0),
+      icon: 'pi pi-truck',
+      kpi: 'bs-kpi--expense',
+    },
   ]
 })
 
@@ -46,16 +64,16 @@ const salesVsPurchasesChart = computed(() => {
   }
 })
 
+const chartYTicks = {
+  callback: (value: string | number) => formatNumber(Number(value)),
+}
+
 const salesVsPurchasesOptions = {
   responsive: true,
   maintainAspectRatio: false,
-  plugins: {
-    legend: { display: false },
-  },
+  plugins: { legend: { display: false } },
   scales: {
-    y: {
-      beginAtZero: true,
-    },
+    y: { beginAtZero: true, ticks: chartYTicks },
   },
 }
 
@@ -103,15 +121,9 @@ const monthlyChart = computed(() => {
 const monthlyChartOptions = {
   responsive: true,
   maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: 'top' as const,
-    },
-  },
+  plugins: { legend: { position: 'top' as const } },
   scales: {
-    y: {
-      beginAtZero: true,
-    },
+    y: { beginAtZero: true, ticks: chartYTicks },
   },
 }
 
@@ -144,11 +156,7 @@ const purchasesInvoiceStatusChart = computed(() => {
 const invoiceStatusOptions = {
   responsive: true,
   maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: 'bottom' as const,
-    },
-  },
+  plugins: { legend: { position: 'bottom' as const } },
 }
 
 const lowStockProducts = computed(() => dashboardStore.data?.low_stock_products ?? [])
@@ -157,103 +165,157 @@ const lowStockOthersCount = computed(() =>
   Math.max(0, lowStockTotal.value - lowStockProducts.value.length),
 )
 
-onMounted(() => {
+const currentMonthSales = computed(
+  () => dashboardStore.data?.current_month?.sales_total ?? 0,
+)
+const currentMonthPurchases = computed(
+  () => dashboardStore.data?.current_month?.purchases_total ?? 0,
+)
+
+function refresh() {
   dashboardStore.fetchDashboard()
+}
+
+onMounted(() => {
+  refresh()
 })
 </script>
 
 <template>
-  <div dir="rtl" class="dashboard-page">
-    <div v-if="dashboardStore.loading" class="flex justify-content-center align-items-center py-8">
-      <i class="pi pi-spin pi-spinner text-4xl text-color-secondary"></i>
-    </div>
+  <FinancialReportShell
+    title="لوحة التحكم"
+    subtitle="ملخص سريع للمنتجات والفواتير والمبيعات والمشتريات والمخزون"
+    icon="pi-home"
+    :loading="dashboardStore.loading"
+  >
+    <template #toolbar>
+      <Button
+        label="تحديث"
+        icon="pi pi-refresh"
+        :loading="dashboardStore.loading"
+        @click="refresh"
+      />
+    </template>
 
-    <template v-else>
-      <!-- Summary cards -->
-      <div class="dashboard-grid">
-        <div v-for="stat in stats" :key="stat.title" class="stat-card">
-          <div class="stat-card-inner">
-            <div class="stat-icon-wrap">
-              <i :class="['pi', stat.icon, 'stat-icon']"></i>
-            </div>
-            <div class="stat-content">
-              <p class="stat-title">{{ stat.title }}</p>
-              <p class="stat-value">{{ stat.value }}</p>
-            </div>
+    <template v-if="dashboardStore.data">
+      <div class="bs-kpi-row bs-kpi-row--4">
+        <div v-for="stat in stats" :key="stat.title" class="bs-kpi" :class="stat.kpi">
+          <div class="bs-kpi-icon"><i :class="stat.icon"></i></div>
+          <div class="bs-kpi-body">
+            <span class="bs-kpi-label">{{ stat.title }}</span>
+            <span class="bs-kpi-value">{{ stat.value }}</span>
           </div>
         </div>
       </div>
 
-      <!-- Charts row -->
-      <div class="dashboard-charts-grid mt-4">
-        <Card class="chart-card">
-          <template #title>المبيعات vs المشتريات (الشهر الحالي)</template>
-          <template #content>
-            <div v-if="salesVsPurchasesChart" class="chart-container">
-              <Chart type="bar" :data="salesVsPurchasesChart" :options="salesVsPurchasesOptions" />
-            </div>
-            <p v-else class="text-color-secondary m-0">لا توجد بيانات</p>
-          </template>
-        </Card>
-        <Card class="chart-card">
-          <template #title>المبيعات والمشتريات (آخر 6 أشهر)</template>
-          <template #content>
-            <div v-if="monthlyChart?.datasets?.[0]?.data?.length" class="chart-container">
-              <Chart type="line" :data="monthlyChart" :options="monthlyChartOptions" />
-            </div>
-            <p v-else class="text-color-secondary m-0">لا توجد بيانات</p>
-          </template>
-        </Card>
+      <div
+        v-if="dashboardStore.data.current_month"
+        class="bs-highlight bs-highlight--profit"
+      >
+        <span class="bs-highlight-label">نشاط الشهر الحالي (مبيعات / مشتريات)</span>
+        <span class="bs-highlight-value">
+          {{ formatNumber(currentMonthSales) }} /
+          {{ formatNumber(currentMonthPurchases) }}
+        </span>
       </div>
 
-      <div class="dashboard-charts-grid dashboard-charts-grid-3 mt-4">
-        <Card class="chart-card chart-card-doughnut">
-          <template #title>حالة فواتير البيع</template>
-          <template #content>
-            <div v-if="salesInvoiceStatusChart" class="chart-container chart-doughnut">
+      <div class="bs-dashboard-charts bs-dashboard-charts--2">
+        <section class="bs-panel bs-panel--cash">
+          <header class="bs-panel-head">
+            <div class="bs-panel-head-main">
+              <span class="bs-panel-icon"><i class="pi pi-chart-bar"></i></span>
+              <h2>المبيعات vs المشتريات (الشهر الحالي)</h2>
+            </div>
+          </header>
+          <div class="bs-panel-body-pad">
+            <div v-if="salesVsPurchasesChart" class="bs-chart-wrap">
+              <Chart type="bar" :data="salesVsPurchasesChart" :options="salesVsPurchasesOptions" />
+            </div>
+            <p v-else class="bs-empty"><i class="pi pi-inbox"></i> لا توجد بيانات</p>
+          </div>
+        </section>
+
+        <section class="bs-panel bs-panel--cash">
+          <header class="bs-panel-head">
+            <div class="bs-panel-head-main">
+              <span class="bs-panel-icon"><i class="pi pi-chart-line"></i></span>
+              <h2>المبيعات والمشتريات (آخر 6 أشهر)</h2>
+            </div>
+          </header>
+          <div class="bs-panel-body-pad">
+            <div v-if="monthlyChart?.datasets?.[0]?.data?.length" class="bs-chart-wrap">
+              <Chart type="line" :data="monthlyChart" :options="monthlyChartOptions" />
+            </div>
+            <p v-else class="bs-empty"><i class="pi pi-inbox"></i> لا توجد بيانات</p>
+          </div>
+        </section>
+      </div>
+
+      <div class="bs-dashboard-charts bs-dashboard-charts--3">
+        <section class="bs-panel bs-panel--income">
+          <header class="bs-panel-head">
+            <div class="bs-panel-head-main">
+              <span class="bs-panel-icon"><i class="pi pi-shopping-cart"></i></span>
+              <h2>حالة فواتير البيع</h2>
+            </div>
+          </header>
+          <div class="bs-panel-body-pad">
+            <div v-if="salesInvoiceStatusChart" class="bs-chart-wrap bs-chart-wrap--doughnut">
               <Chart
                 type="doughnut"
                 :data="salesInvoiceStatusChart"
                 :options="invoiceStatusOptions"
               />
             </div>
-            <p v-else class="text-color-secondary m-0">لا توجد بيانات</p>
-          </template>
-        </Card>
-        <Card class="chart-card chart-card-doughnut">
-          <template #title>حالة فواتير الشراء</template>
-          <template #content>
-            <div v-if="purchasesInvoiceStatusChart" class="chart-container chart-doughnut">
+            <p v-else class="bs-empty"><i class="pi pi-inbox"></i> لا توجد بيانات</p>
+          </div>
+        </section>
+
+        <section class="bs-panel bs-panel--expense">
+          <header class="bs-panel-head">
+            <div class="bs-panel-head-main">
+              <span class="bs-panel-icon"><i class="pi pi-truck"></i></span>
+              <h2>حالة فواتير الشراء</h2>
+            </div>
+          </header>
+          <div class="bs-panel-body-pad">
+            <div v-if="purchasesInvoiceStatusChart" class="bs-chart-wrap bs-chart-wrap--doughnut">
               <Chart
                 type="doughnut"
                 :data="purchasesInvoiceStatusChart"
                 :options="invoiceStatusOptions"
               />
             </div>
-            <p v-else class="text-color-secondary m-0">لا توجد بيانات</p>
-          </template>
-        </Card>
-        <Card class="chart-card">
-          <template #title>منتجات منخفضة المخزون</template>
-          <template #content>
-            <div v-if="lowStockProducts.length" class="low-stock-list">
-              <div
+            <p v-else class="bs-empty"><i class="pi pi-inbox"></i> لا توجد بيانات</p>
+          </div>
+        </section>
+
+        <section class="bs-panel bs-panel--warn">
+          <header class="bs-panel-head">
+            <div class="bs-panel-head-main">
+              <span class="bs-panel-icon"><i class="pi pi-exclamation-triangle"></i></span>
+              <h2>منتجات منخفضة المخزون</h2>
+            </div>
+          </header>
+          <div class="bs-panel-body-pad">
+            <div v-if="lowStockProducts.length" class="bs-low-stock-list">
+              <button
                 v-for="p in lowStockProducts"
                 :key="p.id"
-                class="low-stock-item flex justify-content-between align-items-center py-2 border-bottom-1 surface-border"
+                type="button"
+                class="bs-low-stock-item"
                 @click="router.push('/products')"
               >
-                <span class="font-medium">{{ p.product_code ? `${p.product_code} - ` : '' }}{{ p.name }}</span>
-                <span class="text-color-secondary">
-                  {{ p.quantity }} / {{ p.min_quantity }} {{ p.unit }}</span
-                >
-              </div>
-              <div
-                v-if="lowStockOthersCount"
-                class="low-stock-others text-color-secondary text-sm py-2"
-              >
-                +{{ lowStockOthersCount }} أخرى
-              </div>
+                <span class="bs-low-stock-name">
+                  {{ p.product_code ? `${p.product_code} - ` : '' }}{{ p.name }}
+                </span>
+                <span class="bs-low-stock-qty">
+                  {{ formatQty(p.quantity) }} / {{ formatQty(p.min_quantity) }} {{ p.unit }}
+                </span>
+              </button>
+              <p v-if="lowStockOthersCount" class="bs-low-stock-more">
+                +{{ formatNumber(lowStockOthersCount) }} أخرى
+              </p>
               <Button
                 label="عرض المنتجات"
                 link
@@ -262,227 +324,27 @@ onMounted(() => {
                 @click="router.push('/products')"
               />
             </div>
-            <p v-else class="text-color-secondary m-0">لا توجد منتجات منخفضة المخزون</p>
-          </template>
-        </Card>
+            <p v-else class="bs-empty"><i class="pi pi-check-circle"></i> لا توجد منتجات منخفضة المخزون</p>
+          </div>
+        </section>
       </div>
 
-      <!-- Info cards row -->
-      <div class="dashboard-grid dashboard-grid-2 mt-4">
-        <div class="info-card">
-          <h3 class="info-card-title">مرحباً بك في مدير 360</h3>
-          <p class="info-card-text">
+      <div class="bs-welcome-row">
+        <div class="bs-welcome-card">
+          <h3 class="bs-welcome-title">مرحباً بك في مدير 360</h3>
+          <p class="bs-welcome-text">
             نظام إدارة الأعمال المتكامل. من إدارة المنتجات والمخزون إلى فواتير البيع والشراء، ستجد
             كل ما تحتاجه لإدارة عملك.
           </p>
         </div>
-        <div class="info-card info-card-primary">
-          <div class="info-card-brand">
-            <span class="info-card-logo">م</span>
-            <span class="info-card-brand-text">مدير 360</span>
+        <div class="bs-welcome-card bs-welcome-card--brand">
+          <div class="bs-welcome-brand">
+            <span class="bs-welcome-logo">م</span>
+            <span class="bs-welcome-brand-text">مدير 360</span>
           </div>
-          <p class="info-card-text info-card-text-light">نظام إدارة أعمال سريع وموثوق</p>
+          <p class="bs-welcome-text bs-welcome-text--light">نظام إدارة أعمال سريع وموثوق</p>
         </div>
       </div>
     </template>
-  </div>
+  </FinancialReportShell>
 </template>
-
-<style scoped>
-.dashboard-page {
-  width: 100%;
-  min-width: 0;
-}
-
-.dashboard-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-}
-
-.dashboard-grid .stat-card {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
-@media (max-width: 767px) {
-  .dashboard-grid .stat-card {
-    flex: 1 1 100%;
-  }
-}
-
-.dashboard-charts-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.25rem;
-}
-
-.dashboard-charts-grid-3 {
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 768px) {
-  .dashboard-charts-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .dashboard-charts-grid-3 {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-.chart-card {
-  min-height: 280px;
-}
-
-.chart-card-doughnut :deep(.p-card-content) {
-  overflow: hidden;
-}
-
-.chart-container {
-  height: 280px;
-}
-
-.chart-doughnut {
-  height: 240px;
-  width: 100%;
-  max-width: 100%;
-  margin: 0 auto;
-  display: flex;
-  justify-content: center;
-}
-
-.low-stock-list {
-  min-height: 200px;
-}
-
-.low-stock-item {
-  cursor: pointer;
-}
-
-.low-stock-item:hover {
-  background: var(--p-surface-hover);
-}
-
-.dashboard-grid-2 {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.25rem;
-}
-
-.dashboard-grid-2 .info-card {
-  min-width: 0;
-}
-
-@media (min-width: 768px) {
-  .dashboard-grid-2 {
-    grid-template-columns: 2fr 1fr;
-  }
-}
-
-/* Stat cards */
-.stat-card {
-  background: white;
-  border-radius: 0.75rem;
-  padding: 1.25rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  border: 1px solid #e2e8f0;
-}
-
-.stat-card-inner {
-  display: flex;
-  align-items: flex-start;
-  gap: 1rem;
-}
-
-.stat-icon-wrap {
-  width: 3rem;
-  height: 3rem;
-  min-width: 3rem;
-  background: #e8f4ff;
-  border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.stat-icon {
-  font-size: 1.25rem;
-  color: #008cff;
-}
-
-.stat-content {
-  flex: 1;
-}
-
-.stat-title {
-  font-size: 0.8rem;
-  color: #718096;
-  margin: 0 0 0.25rem 0;
-}
-
-.stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #2d3748;
-  margin: 0;
-}
-
-/* Info cards */
-.info-card {
-  background: white;
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  border: 1px solid #e2e8f0;
-}
-
-.info-card-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #2d3748;
-  margin: 0 0 0.5rem 0;
-}
-
-.info-card-text {
-  font-size: 0.9rem;
-  color: #718096;
-  line-height: 1.5;
-  margin: 0 0 0.75rem 0;
-}
-
-.info-card-primary {
-  background: #008cff;
-  border-color: #008cff;
-}
-
-.info-card-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.info-card-logo {
-  width: 2rem;
-  height: 2rem;
-  background: rgba(255, 255, 255, 0.25);
-  border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 1.125rem;
-  font-weight: 700;
-}
-
-.info-card-brand-text {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: white;
-}
-
-.info-card-text-light {
-  color: rgba(255, 255, 255, 0.9);
-  margin: 0;
-}
-</style>

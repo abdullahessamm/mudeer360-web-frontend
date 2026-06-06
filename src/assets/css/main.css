@@ -11,6 +11,11 @@
   --p-primary-active-color: #0066cc;
 }
 
+/* Western digits in PrimeVue numeric inputs */
+.p-inputnumber-input {
+  font-variant-numeric: lining-nums;
+}
+
 /* Low stock row warning animation */
 @keyframes low-stock-pulse {
   0%,

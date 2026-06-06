@@ -10,12 +10,15 @@ import { formatDateOnly } from '@/lib/date'
 import { assetStatusLabel, ASSET_STATUS_OPTIONS } from '@/lib/assetStatus'
 import AssetForm from '@/components/forms/AssetForm.vue'
 import type { Asset } from '@/types'
+import { useFinancialAccountsStore } from '@/stores/financialAccounts'
+import { formatNumber } from '@/lib/format'
 
 const route = useRoute()
 const confirm = useConfirm()
 const store = useAssetsStore()
 const categoriesStore = useAssetCategoriesStore()
 const dashboardStore = useDashboardStore()
+const financialAccountsStore = useFinancialAccountsStore()
 
 watch(
   () => store.error,
@@ -45,7 +48,7 @@ const selectedStatus = ref<string | null>(null)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editingId = ref<number | null>(null)
-const formModel = ref<(Partial<Asset> & { auto_generate_code?: boolean }) | null>(null)
+const formModel = ref<(Partial<Asset> & { auto_generate_code?: boolean } & { create_financial_transaction?: boolean; financial_account_id?: number | null }) | null>(null)
 
 const categoryFilterOptions = computed(() => {
   const list = categoriesStore.allCategories.length
@@ -68,6 +71,10 @@ const statusFilterOptions = computed(() => [
 
 const formTitle = computed(() => (isEdit.value ? 'تعديل الأصل' : 'إضافة أصل'))
 
+const financialAccountOptions = computed(() =>
+  financialAccountsStore.items.map((item) => ({ label: item.name, value: item.id })),
+)
+
 async function openCreate() {
   isEdit.value = false
   editingId.value = null
@@ -81,6 +88,8 @@ async function openCreate() {
     status: 'working',
     location: '',
     notes: '',
+    create_financial_transaction: false,
+    financial_account_id: financialAccountOptions.value[0]?.value ?? null,
   }
   if (categoriesStore.allCategories.length === 0) {
     await categoriesStore.fetchAllForSelect()
@@ -101,6 +110,8 @@ async function openEdit(row: Asset) {
     status: row.status,
     location: row.location ?? '',
     notes: row.notes ?? '',
+    create_financial_transaction: row.has_financial_transaction,
+    financial_account_id: row.financial_account_id ?? financialAccountOptions.value[0]?.value,
   }
   if (categoriesStore.allCategories.length === 0) {
     await categoriesStore.fetchAllForSelect()
@@ -108,7 +119,13 @@ async function openEdit(row: Asset) {
   dialogVisible.value = true
 }
 
-async function onFormSubmit(payload: Partial<Asset> & { auto_generate_code?: boolean }) {
+async function onFormSubmit(
+  payload: Partial<Asset> & {
+    auto_generate_code?: boolean
+    create_financial_transaction?: boolean
+    financial_account_id?: number | null
+  },
+) {
   try {
     if (isEdit.value && editingId.value !== null) {
       await store.update(editingId.value, payload)
@@ -181,11 +198,11 @@ function onPageChange(page: number) {
 }
 
 function formatPrice(n: number) {
-  return n.toLocaleString('ar-EG', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+  return formatNumber(n, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
 onMounted(async () => {
-  await categoriesStore.fetchAllForSelect()
+  await Promise.all([categoriesStore.fetchAllForSelect(), financialAccountsStore.fetchAll()])
   await store.fetchPage(
     1,
     store.perPage,
@@ -318,8 +335,10 @@ onMounted(async () => {
     >
       <AssetForm
         v-if="dialogVisible"
+        :key="isEdit ? `edit-${editingId}` : 'create'"
         :model-value="formModel"
         :category-options="formCategoryOptions"
+        :financial-account-options="financialAccountOptions"
         :is-edit="isEdit"
         :loading="store.loading"
         @submit="onFormSubmit"

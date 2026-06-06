@@ -7,14 +7,23 @@ import { ASSET_STATUS_OPTIONS } from '@/lib/assetStatus'
 import type { Asset, AssetStatusValue } from '@/types'
 
 const props = defineProps<{
-  modelValue?: Partial<Asset> | null
+  modelValue?: Partial<Asset & { create_financial_transaction: boolean; financial_account_id: number | null }> | null
   categoryOptions: { label: string; value: number }[]
+  financialAccountOptions: { label: string; value: number }[]
   loading?: boolean
   isEdit?: boolean
 }>()
 
 const emit = defineEmits<{
-  submit: [payload: Partial<Asset> & { auto_generate_code?: boolean }]
+  submit: [
+    payload: Partial<
+      Asset & {
+        auto_generate_code?: boolean
+        create_financial_transaction: boolean
+        financial_account_id?: number
+      }
+    >,
+  ]
   cancel: []
 }>()
 
@@ -33,22 +42,30 @@ const form = reactive({
   status: (props.modelValue?.status as AssetStatusValue | undefined) ?? 'working',
   location: props.modelValue?.location ?? '',
   notes: props.modelValue?.notes ?? '',
-})
+  create_financial_transaction: props.modelValue?.create_financial_transaction ?? false,
+  financial_account_id: props.modelValue?.financial_account_id ?? (null as number | null),
+});
+
+function syncFromModel(v: NonNullable<typeof props.modelValue>) {
+  form.code = v.code ?? ''
+  form.auto_generate_code = props.isEdit
+    ? false
+    : ((v as { auto_generate_code?: boolean }).auto_generate_code ?? true)
+  form.name = v.name ?? ''
+  form.asset_category_id = v.asset_category_id ?? null
+  form.purchase_price = v.purchase_price ?? 0
+  form.purchase_date = v.purchase_date ? formatDateOnly(v.purchase_date) : today
+  form.status = (v.status as AssetStatusValue) ?? 'working'
+  form.location = v.location ?? ''
+  form.notes = v.notes ?? ''
+  form.create_financial_transaction = v.create_financial_transaction ?? false
+  form.financial_account_id = v.financial_account_id ?? null
+}
 
 watch(
   () => props.modelValue,
   (v) => {
-    if (v) {
-      form.code = v.code ?? ''
-      form.auto_generate_code = props.isEdit ? false : true
-      form.name = v.name ?? ''
-      form.asset_category_id = v.asset_category_id ?? null
-      form.purchase_price = v.purchase_price ?? 0
-      form.purchase_date = v.purchase_date ? formatDateOnly(v.purchase_date) : today
-      form.status = (v.status as AssetStatusValue) ?? 'working'
-      form.location = v.location ?? ''
-      form.notes = v.notes ?? ''
-    }
+    if (v) syncFromModel(v)
   },
   { immediate: true },
 )
@@ -56,7 +73,11 @@ watch(
 const rules = assetRules
 const v$ = useVuelidate(rules, form)
 
-const invalid = computed(() => v$.value.$invalid)
+const invalid = computed(() => {
+  if (v$.value.$invalid) return true
+  if (form.create_financial_transaction && !form.financial_account_id) return true
+  return false
+})
 
 const datePickerValue = computed({
   get: () => (form.purchase_date ? new Date(form.purchase_date + 'T12:00:00') : null),
@@ -67,8 +88,12 @@ const datePickerValue = computed({
 
 async function onSubmit() {
   v$.value.$touch()
-  if (v$.value.$invalid) return
-  const payload: Partial<Asset> & { auto_generate_code?: boolean } = {
+  if (invalid.value) return
+  const payload: Partial<Asset> & {
+    auto_generate_code?: boolean
+    create_financial_transaction: boolean
+    financial_account_id?: number
+  } = {
     name: form.name.trim(),
     asset_category_id: form.asset_category_id,
     purchase_price: form.purchase_price,
@@ -76,6 +101,10 @@ async function onSubmit() {
     status: form.status,
     location: form.location?.trim() || undefined,
     notes: form.notes?.trim() || undefined,
+    create_financial_transaction: form.create_financial_transaction,
+  }
+  if (form.create_financial_transaction && form.financial_account_id != null) {
+    payload.financial_account_id = form.financial_account_id
   }
   if (form.auto_generate_code) {
     payload.auto_generate_code = true
@@ -183,6 +212,36 @@ function errorMsg(field: keyof typeof form) {
         @blur="v$.purchase_date.$touch()"
       />
       <small v-if="v$.purchase_date.$error" class="p-error">{{ errorMsg('purchase_date') }}</small>
+    </div>
+    <div class="field flex justify-content-start gap-2">
+      <Checkbox
+        input-id="a-create-ft"
+        v-model="form.create_financial_transaction"
+        :binary="true"
+      />
+      <label for="a-create-ft">إنشاء حركة مالية</label>
+    </div>
+    <div class="field" v-if="form.create_financial_transaction">
+      <label for="a-account">الحساب المالي <span class="text-red-500">*</span></label>
+      <Select
+        id="a-account"
+        v-model="form.financial_account_id"
+        :options="financialAccountOptions"
+        option-label="label"
+        option-value="value"
+        placeholder="اختر الحساب"
+        class="w-full mt-1"
+        :class="{
+          'p-invalid':
+            form.create_financial_transaction && !form.financial_account_id,
+        }"
+      />
+      <small
+        v-if="form.create_financial_transaction && !form.financial_account_id"
+        class="p-error"
+      >
+        الحقل مطلوب
+      </small>
     </div>
     <div class="field">
       <label for="a-status">الحالة <span class="text-red-500">*</span></label>

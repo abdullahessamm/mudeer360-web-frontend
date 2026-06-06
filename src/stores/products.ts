@@ -69,7 +69,7 @@ export const useProductsStore = defineStore('products', () => {
         unit: product.unit ?? 'قطعة',
         purchase_price: product.purchase_price,
         sale_price: product.sale_price,
-        quantity: product.quantity,
+        opening_quantity: (product as { opening_quantity?: number }).opening_quantity ?? 0,
         min_quantity: product.min_quantity,
         description: product.description || undefined,
       }
@@ -98,7 +98,6 @@ export const useProductsStore = defineStore('products', () => {
         unit: product.unit,
         purchase_price: product.purchase_price,
         sale_price: product.sale_price,
-        quantity: product.quantity,
         min_quantity: product.min_quantity,
         description: product.description || undefined,
       }

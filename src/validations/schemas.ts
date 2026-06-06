@@ -27,7 +27,8 @@ export const productCategoryRules = {
 /** Asset Category - same rules as product category */
 export const assetCategoryRules = productCategoryRules
 
-/** Asset - StoreAssetRequest (client-side mirror) */
+/** Asset - StoreAssetRequest (client-side mirror).
+ * Note: financial_account_id is required when create_financial_transaction; validated in AssetForm. */
 export const assetRules = {
   name: {
     required,
@@ -79,7 +80,7 @@ export const productRules = {
     numeric,
     minValue: minValue(0),
   },
-  quantity: {
+  opening_quantity: {
     required,
     numeric,
     minValue: minValue(0),
@@ -92,6 +93,18 @@ export const productRules = {
   description: {
     maxLength: maxLength(65535),
   },
+}
+
+/** Product update — quantity/opening are not editable via API. */
+export const productEditRules = {
+  product_code: productRules.product_code,
+  name: productRules.name,
+  product_category_id: productRules.product_category_id,
+  unit: productRules.unit,
+  purchase_price: productRules.purchase_price,
+  sale_price: productRules.sale_price,
+  min_quantity: productRules.min_quantity,
+  description: productRules.description,
 }
 
 /** Supplier - StoreSupplierRequest */

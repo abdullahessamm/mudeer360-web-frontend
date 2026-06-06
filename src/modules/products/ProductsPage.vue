@@ -3,6 +3,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { showError } from '@/composables/useToast'
+import { formatQty, formatDateTime } from '@/lib/format'
 import { useProductsStore } from '@/stores/products'
 import { useProductCategoriesStore } from '@/stores/productCategories'
 import { useDashboardStore } from '@/stores/dashboard'
@@ -80,7 +81,7 @@ async function openCreate() {
     unit: 'قطعة',
     purchase_price: 0,
     sale_price: 0,
-    quantity: 0,
+    opening_quantity: 0,
     min_quantity: 0,
     description: '',
   }
@@ -101,7 +102,8 @@ async function openEdit(row: Product) {
     unit: row.unit ?? 'قطعة',
     purchase_price: row.purchase_price,
     sale_price: row.sale_price,
-    quantity: row.quantity,
+    opening_quantity: row.opening_quantity ?? row.quantity ?? 0,
+    quantity: row.quantity ?? 0,
     min_quantity: row.min_quantity,
     description: row.description ?? '',
   }
@@ -167,7 +169,7 @@ function isLowStock(product: Product) {
   return (product.min_quantity ?? 0) >= (product.quantity ?? 0)
 }
 
-function getRowClass(data: Product) {
+function rowClass(data: Product) {
   return isLowStock(data) ? 'product-row-low-stock' : ''
 }
 
@@ -183,9 +185,8 @@ function directionLabel(d: string) {
   return d === 'in' ? 'دخول' : 'خروج'
 }
 
-function formatQty(n: number) {
-  return n.toLocaleString('ar-EG', { minimumFractionDigits: 0, maximumFractionDigits: 4 })
-}
+/** Shallow copy so DataTable sorting does not mutate the Pinia store array. */
+const tableProducts = computed(() => [...store.items])
 
 async function openStockDialog(row: Product) {
   stockProduct.value = row
@@ -254,17 +255,17 @@ onMounted(async () => {
         </div>
         <DataTable
           v-else
-          :value="store.items"
+          :value="tableProducts"
           data-key="id"
           striped-rows
           responsive-layout="scroll"
           class="p-datatable-sm"
-          :row-class="getRowClass"
+          :row-class="rowClass"
         >
           <Column field="product_code" header="كود المنتج">
             <template #body="{ data }">{{ data.product_code ?? '—' }}</template>
           </Column>
-          <Column field="name" header="الاسم" sortable />
+          <Column field="name" header="الاسم" />
           <Column field="category" header="الفئة">
             <template #body="{ data }">{{ data.category?.name ?? '—' }}</template>
           </Column>
@@ -277,7 +278,12 @@ onMounted(async () => {
           <Column field="sale_price" header="سعر البيع">
             <template #body="{ data }">{{ data.sale_price }}</template>
           </Column>
-          <Column field="quantity" header="الكمية" />
+          <Column field="opening_quantity" header="الكمية الافتتاحية">
+            <template #body="{ data }">{{ formatQty(data.opening_quantity) }}</template>
+          </Column>
+          <Column field="quantity" header="الكمية الحالية">
+            <template #body="{ data }">{{ formatQty(data.quantity) }}</template>
+          </Column>
           <Column field="min_quantity" header="الحد الأدنى" />
           <Column header="الإجراءات" style="width: 280px">
             <template #body="{ data }">
@@ -344,7 +350,8 @@ onMounted(async () => {
       @hide="dialogVisible = false"
     >
       <ProductForm
-        v-if="dialogVisible"
+        v-if="dialogVisible && formModel"
+        :key="isEdit ? `edit-${editingId}` : 'create'"
         :model-value="formModel"
         :category-options="formCategoryOptions"
         :is-edit="isEdit"
@@ -373,7 +380,7 @@ onMounted(async () => {
         >
           <Column field="created_at" header="التاريخ">
             <template #body="{ data }">
-              {{ data.created_at ? new Date(data.created_at).toLocaleString('ar-EG') : '—' }}
+              {{ data.created_at ? formatDateTime(data.created_at) : '—' }}
             </template>
           </Column>
           <Column field="direction" header="الاتجاه">

@@ -31,6 +31,8 @@ export interface Asset {
   name: string
   asset_category_id: number | null
   category?: AssetCategory | null
+  has_financial_transaction: boolean
+  financial_account_id: number | null
   purchase_price: number
   purchase_date: string
   status: AssetStatusValue | string
@@ -49,6 +51,7 @@ export interface Product {
   unit: string
   purchase_price: number
   sale_price: number
+  opening_quantity: number
   quantity: number
   min_quantity: number
   description?: string | null

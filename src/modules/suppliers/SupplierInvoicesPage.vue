@@ -16,6 +16,7 @@ import PaymentForm from '@/components/forms/PaymentForm.vue'
 import type { SupplierWithInvoices } from '@/types'
 import type { PurchaseInvoice, PurchaseInvoiceCreatePayload, PaymentPayload } from '@/types'
 import type { FinancialTransaction } from '@/types'
+import { formatMoney, formatIssuedAt } from '@/lib/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -46,10 +47,7 @@ const pdfExporting = ref(false)
 const issuedAtTimestamp = ref(Date.now())
 
 const issuedAtLabel = computed(() =>
-  new Date(issuedAtTimestamp.value).toLocaleString('ar-EG', {
-    dateStyle: 'long',
-    timeStyle: 'short',
-  }),
+  formatIssuedAt(issuedAtTimestamp.value),
 )
 
 const supplierId = computed(() => Number(route.params.id))
@@ -168,7 +166,7 @@ function goBack() {
 }
 
 function formatAmount(n: number) {
-  return n.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+  return formatMoney(n)
 }
 
 function sanitizeFilename(name: string) {

@@ -7,6 +7,7 @@ import { definePreset } from '@primeuix/themes'
 import 'primeicons/primeicons.css'
 import 'primeflex/primeflex.css'
 import '@/assets/css/main.css'
+import '@/assets/css/financial-reports.css'
 
 import Button from 'primevue/button'
 import Card from 'primevue/card'

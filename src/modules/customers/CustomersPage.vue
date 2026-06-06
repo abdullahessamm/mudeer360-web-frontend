@@ -7,6 +7,7 @@ import { useCustomersStore } from '@/stores/customers'
 import { useDashboardStore } from '@/stores/dashboard'
 import CustomerForm from '@/components/forms/CustomerForm.vue'
 import type { Customer } from '@/types'
+import { formatMoney } from '@/lib/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -110,7 +111,7 @@ function onPageChange(page: number) {
 }
 
 function formatBalance(n: number | undefined) {
-  return (n ?? 0).toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+  return formatMoney(n ?? 0)
 }
 
 onMounted(() => {
