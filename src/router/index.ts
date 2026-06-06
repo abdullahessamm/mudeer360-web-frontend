@@ -154,6 +154,12 @@ const router = createRouter({
           meta: { title: 'قائمة المركز المالي', breadcrumb: 'التقارير المالية' },
         },
         {
+          path: 'financial/reports/general-ledger',
+          name: 'financial-reports-general-ledger',
+          component: () => import('@/modules/financial/reports/GeneralLedgerPage.vue'),
+          meta: { title: 'دفتر الأستاذ العام', breadcrumb: 'التقارير المالية' },
+        },
+        {
           path: 'employees',
           name: 'employees',
           component: () => import('@/modules/employees/EmployeesPage.vue'),

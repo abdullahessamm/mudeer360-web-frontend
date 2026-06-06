@@ -60,6 +60,43 @@ export interface BalanceSheetLiabilities {
   total_liabilities: number
 }
 
+export interface LedgerAccountOption {
+  id: number
+  code: string
+  name: string
+  type: string
+}
+
+export interface GeneralLedgerEntryRow {
+  id: number
+  journal_entry_id: number
+  entry_number: string
+  date: string
+  description: string | null
+  line_description: string | null
+  debit: number
+  credit: number
+  balance: number
+}
+
+export interface GeneralLedgerAccountRow {
+  id: number
+  code: string
+  name: string
+  type: string
+  opening_balance: number
+  total_debit: number
+  total_credit: number
+  closing_balance: number
+  entries: GeneralLedgerEntryRow[]
+}
+
+export interface GeneralLedgerPayload {
+  date_from: string
+  date_to: string
+  accounts: GeneralLedgerAccountRow[]
+}
+
 export interface BalanceSheetPayload {
   assets: BalanceSheetAssetRow[]
   /** Sum of financial account balances (نقدية وبنوك). */
@@ -104,6 +141,8 @@ export const useFinancialReportsStore = defineStore('financialReports', () => {
   const incomeStatement = ref<IncomeStatementPayload | null>(null)
   const cashFlow = ref<CashFlowPayload | null>(null)
   const balanceSheet = ref<BalanceSheetPayload | null>(null)
+  const generalLedger = ref<GeneralLedgerPayload | null>(null)
+  const ledgerAccounts = ref<LedgerAccountOption[]>([])
 
   async function getIncomeStatement(params: { date_from: string; date_to: string }) {
     loading.value = true
@@ -141,6 +180,38 @@ export const useFinancialReportsStore = defineStore('financialReports', () => {
     }
   }
 
+  async function fetchLedgerAccounts() {
+    try {
+      const { data } = await apiClient.get('/api/reports/ledger-accounts')
+      const payload = unwrapPayload<LedgerAccountOption[]>(data)
+      ledgerAccounts.value = payload
+      return payload
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل تحميل حسابات الدفتر')
+      throw e
+    }
+  }
+
+  async function getGeneralLedger(params: {
+    date_from: string
+    date_to: string
+    ledger_account_id?: number | null
+  }) {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.get('/api/reports/general-ledger', { params })
+      const payload = unwrapPayload<GeneralLedgerPayload>(data)
+      generalLedger.value = payload
+      return payload
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل تحميل دفتر الأستاذ العام')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function getBalanceSheet() {
     loading.value = true
     error.value = null
@@ -167,9 +238,13 @@ export const useFinancialReportsStore = defineStore('financialReports', () => {
     incomeStatement,
     cashFlow,
     balanceSheet,
+    generalLedger,
+    ledgerAccounts,
     getIncomeStatement,
     getCashFlow,
     getBalanceSheet,
+    fetchLedgerAccounts,
+    getGeneralLedger,
     clearError,
   }
 })

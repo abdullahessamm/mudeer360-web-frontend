@@ -111,6 +111,7 @@ const financialReportsMenuItems = [
     icon: 'pi pi-arrow-right-arrow-left',
   },
   { label: 'قائمة المركز المالي', to: '/financial/reports/balance-sheet', icon: 'pi pi-table' },
+  { label: 'دفتر الأستاذ العام', to: '/financial/reports/general-ledger', icon: 'pi pi-book' },
 ]
 
 const financialExpanded = ref(false)
