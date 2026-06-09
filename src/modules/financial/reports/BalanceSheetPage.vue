@@ -9,8 +9,11 @@ import { formatMoney } from '@/lib/format'
 const store = useFinancialReportsStore()
 
 const showCashDetails = ref(true)
+const showIndebtedCustomersDetails = ref(true)
 const showFixedDetails = ref(true)
 const showStockDetails = ref(true)
+const showCreditCustomersDetails = ref(true)
+const showSupplierPayablesDetails = ref(true)
 
 watch(
   () => store.error,
@@ -55,16 +58,57 @@ const stock = computed(
 
 const stockTotal = computed(() => stock.value.total)
 
+const indebtedCustomers = computed(
+  () =>
+    sheet.value?.indebted_customers ?? {
+      by_customer: [],
+      total: 0,
+    },
+)
+
+const indebtedCustomersTotal = computed(() => indebtedCustomers.value.total)
+
+const indebtedCustomerCount = computed(() => indebtedCustomers.value.by_customer.length)
+
+const creditCustomers = computed(
+  () =>
+    sheet.value?.credit_customers ?? {
+      by_customer: [],
+      total: 0,
+    },
+)
+
+const creditCustomersTotal = computed(() => creditCustomers.value.total)
+
+const creditCustomerCount = computed(() => creditCustomers.value.by_customer.length)
+
+const supplierPayables = computed(
+  () =>
+    sheet.value?.supplier_payables ?? {
+      by_supplier: [],
+      total: 0,
+    },
+)
+
+const supplierPayablesTotal = computed(() => supplierPayables.value.total)
+
+const supplierPayablesCount = computed(() => supplierPayables.value.by_supplier.length)
+
 const liabilityRows = computed(() => {
   const L = sheet.value?.liabilities
   if (!L) return []
   return [
-    { key: 'suppliers', label: 'ذمم الموردين', hint: 'فواتير شراء غير مسددة أو مسددة جزئياً', amount: L.suppliers, icon: 'pi-truck' },
     { key: 'payroll', label: 'رواتب معلّقة', hint: 'مستحقات رواتب لم تُسدَّد بعد', amount: L.payroll, icon: 'pi-users' },
-    { key: 'customers', label: 'أرصدة عملاء دائنة', hint: 'مبالغ يستحقها العملاء على المنشأة', amount: L.customers, icon: 'pi-user' },
     { key: 'partners', label: 'جاري الشركاء (سالب)', hint: 'مسحوبات أكثر من الإيداعات', amount: L.partners, icon: 'pi-briefcase' },
   ].filter((r) => Math.abs(r.amount) > 0.0001)
 })
+
+const hasLiabilityContent = computed(
+  () =>
+    liabilityRows.value.length > 0 ||
+    creditCustomersTotal.value > 0.0001 ||
+    supplierPayablesTotal.value > 0.0001,
+)
 
 const liabilitiesTotal = computed(() => sheet.value?.liabilities.total_liabilities ?? 0)
 
@@ -219,6 +263,50 @@ onMounted(() => {
             <button
               type="button"
               class="bs-section-head"
+              :aria-expanded="showIndebtedCustomersDetails"
+              @click="showIndebtedCustomersDetails = !showIndebtedCustomersDetails"
+            >
+              <span class="bs-section-icon bs-section-icon--receivable"><i class="pi pi-users"></i></span>
+              <span class="bs-section-info">
+                <span class="bs-section-title">ذمم العملاء</span>
+                <span class="bs-section-meta">{{ indebtedCustomerCount }} عميل</span>
+              </span>
+              <span class="bs-section-amount">{{ fmt(indebtedCustomersTotal) }}</span>
+              <i class="pi bs-section-chevron" :class="showIndebtedCustomersDetails ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+            </button>
+            <Transition name="bs-expand">
+              <div v-show="showIndebtedCustomersDetails" class="bs-section-body">
+                <p class="bs-stock-formula text-sm text-color-secondary m-0 mb-3">
+                  رصيد سالب على العميل + المتبقي على فواتير البيع غير المسددة أو المسددة جزئياً
+                </p>
+                <p v-if="!indebtedCustomers.by_customer.length" class="bs-empty">
+                  <i class="pi pi-inbox"></i>
+                  لا توجد ذمم على العملاء
+                </p>
+                <div v-else class="bs-table-wrap">
+                  <table class="bs-table">
+                    <thead>
+                      <tr>
+                        <th>العميل</th>
+                        <th class="bs-td-num">المبلغ المستحق</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in indebtedCustomers.by_customer" :key="row.id">
+                        <td class="bs-td-strong">{{ row.name }}</td>
+                        <td class="bs-td-num">{{ fmt(row.balance) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Transition>
+          </div>
+
+          <div class="bs-section">
+            <button
+              type="button"
+              class="bs-section-head"
               :aria-expanded="showFixedDetails"
               @click="showFixedDetails = !showFixedDetails"
             >
@@ -326,24 +414,115 @@ onMounted(() => {
               <span class="bs-section-amount">{{ fmt(liabilitiesTotal) }}</span>
             </div>
             <div class="bs-section-body bs-section-body--flush">
-              <p v-if="!liabilityRows.length" class="bs-empty">
+              <p v-if="!hasLiabilityContent" class="bs-empty">
                 <i class="pi pi-check-circle"></i>
                 لا توجد التزامات مسجّلة
               </p>
-              <ul v-else class="bs-liab-list">
-                <li v-for="row in liabilityRows" :key="row.key" class="bs-liab-item">
-                  <span class="bs-liab-icon"><i class="pi" :class="row.icon"></i></span>
-                  <div class="bs-liab-text">
-                    <span class="bs-liab-label">{{ row.label }}</span>
-                    <small>{{ row.hint }}</small>
-                  </div>
-                  <span class="bs-liab-amount">{{ fmt(row.amount) }}</span>
-                </li>
-              </ul>
-              <div v-if="liabilityRows.length" class="bs-inline-total">
-                <span>مجموع الالتزامات</span>
-                <span>{{ fmt(liabilitiesTotal) }}</span>
-              </div>
+              <template v-else>
+                <ul v-if="liabilityRows.length" class="bs-liab-list">
+                  <li v-for="row in liabilityRows" :key="row.key" class="bs-liab-item">
+                    <span class="bs-liab-icon"><i class="pi" :class="row.icon"></i></span>
+                    <div class="bs-liab-text">
+                      <span class="bs-liab-label">{{ row.label }}</span>
+                      <small>{{ row.hint }}</small>
+                    </div>
+                    <span class="bs-liab-amount">{{ fmt(row.amount) }}</span>
+                  </li>
+                </ul>
+
+                <div class="bs-section bs-section--nested">
+                  <button
+                    type="button"
+                    class="bs-section-head"
+                    :aria-expanded="showSupplierPayablesDetails"
+                    @click="showSupplierPayablesDetails = !showSupplierPayablesDetails"
+                  >
+                    <span class="bs-section-icon bs-section-icon--supplier"><i class="pi pi-truck"></i></span>
+                    <span class="bs-section-info">
+                      <span class="bs-section-title">ذمم الموردين</span>
+                      <span class="bs-section-meta">{{ supplierPayablesCount }} مورد</span>
+                    </span>
+                    <span class="bs-section-amount">{{ fmt(supplierPayablesTotal) }}</span>
+                    <i class="pi bs-section-chevron" :class="showSupplierPayablesDetails ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+                  </button>
+                  <Transition name="bs-expand">
+                    <div v-show="showSupplierPayablesDetails" class="bs-section-body">
+                      <p class="bs-stock-formula text-sm text-color-secondary m-0 mb-3">
+                        المتبقي على فواتير الشراء غير المسددة أو المسددة جزئياً
+                      </p>
+                      <p v-if="!supplierPayables.by_supplier.length" class="bs-empty">
+                        <i class="pi pi-inbox"></i>
+                        لا توجد ذمم على الموردين
+                      </p>
+                      <div v-else class="bs-table-wrap">
+                        <table class="bs-table">
+                          <thead>
+                            <tr>
+                              <th>المورد</th>
+                              <th class="bs-td-num">المبلغ</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="row in supplierPayables.by_supplier" :key="row.id">
+                              <td class="bs-td-strong">{{ row.name }}</td>
+                              <td class="bs-td-num">{{ fmt(row.balance) }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </Transition>
+                </div>
+
+                <div class="bs-section bs-section--nested">
+                  <button
+                    type="button"
+                    class="bs-section-head"
+                    :aria-expanded="showCreditCustomersDetails"
+                    @click="showCreditCustomersDetails = !showCreditCustomersDetails"
+                  >
+                    <span class="bs-section-icon bs-section-icon--credit"><i class="pi pi-user"></i></span>
+                    <span class="bs-section-info">
+                      <span class="bs-section-title">أرصدة عملاء دائنة</span>
+                      <span class="bs-section-meta">{{ creditCustomerCount }} عميل</span>
+                    </span>
+                    <span class="bs-section-amount">{{ fmt(creditCustomersTotal) }}</span>
+                    <i class="pi bs-section-chevron" :class="showCreditCustomersDetails ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+                  </button>
+                  <Transition name="bs-expand">
+                    <div v-show="showCreditCustomersDetails" class="bs-section-body">
+                      <p class="bs-stock-formula text-sm text-color-secondary m-0 mb-3">
+                        رصيد عميل موجب + قيمة أصناف فواتير البيع لم تُصرف بعد
+                      </p>
+                      <p v-if="!creditCustomers.by_customer.length" class="bs-empty">
+                        <i class="pi pi-inbox"></i>
+                        لا توجد أرصدة دائنة على العملاء
+                      </p>
+                      <div v-else class="bs-table-wrap">
+                        <table class="bs-table">
+                          <thead>
+                            <tr>
+                              <th>العميل</th>
+                              <th class="bs-td-num">المبلغ</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="row in creditCustomers.by_customer" :key="row.id">
+                              <td class="bs-td-strong">{{ row.name }}</td>
+                              <td class="bs-td-num">{{ fmt(row.balance) }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </Transition>
+                </div>
+
+                <div class="bs-inline-total">
+                  <span>مجموع الالتزامات</span>
+                  <span>{{ fmt(liabilitiesTotal) }}</span>
+                </div>
+              </template>
             </div>
           </div>
 

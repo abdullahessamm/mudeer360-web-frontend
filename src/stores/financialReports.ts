@@ -52,6 +52,37 @@ export interface BalanceSheetStock {
   total: number
 }
 
+/** Customer indebted balances (ذمم مدينة) — amounts owed by customers. */
+export interface BalanceSheetIndebtedCustomerRow {
+  id: number
+  name: string
+  balance: number
+}
+
+export interface BalanceSheetIndebtedCustomers {
+  by_customer: BalanceSheetIndebtedCustomerRow[]
+  total: number
+}
+
+/** Customer credit liabilities (أرصدة عملاء دائنة). */
+export type BalanceSheetCreditCustomerRow = BalanceSheetIndebtedCustomerRow
+
+export interface BalanceSheetCreditCustomers {
+  by_customer: BalanceSheetCreditCustomerRow[]
+  total: number
+}
+
+export interface BalanceSheetSupplierRow {
+  id: number
+  name: string
+  balance: number
+}
+
+export interface BalanceSheetSupplierPayables {
+  by_supplier: BalanceSheetSupplierRow[]
+  total: number
+}
+
 export interface BalanceSheetLiabilities {
   suppliers: number
   payroll: number
@@ -103,6 +134,12 @@ export interface BalanceSheetPayload {
   financial_assets_total?: number
   fixed_assets?: BalanceSheetFixedAssets
   stock?: BalanceSheetStock
+  /** Sum of indebted customer balances (ذمم العملاء). */
+  indebted_customers?: BalanceSheetIndebtedCustomers
+  /** Customer credit liabilities (أرصدة عملاء دائنة). */
+  credit_customers?: BalanceSheetCreditCustomers
+  /** Supplier payables (ذمم الموردين). */
+  supplier_payables?: BalanceSheetSupplierPayables
   total_assets: number
   liabilities: BalanceSheetLiabilities
   partners_equity: number
@@ -122,14 +159,30 @@ function normalizeBalanceSheet(payload: BalanceSheetPayload): BalanceSheetPayloa
     sales_cost: 0,
     total: 0,
   }
+  const indebtedCustomers: BalanceSheetIndebtedCustomers = payload.indebted_customers ?? {
+    by_customer: [],
+    total: 0,
+  }
+  const creditCustomers: BalanceSheetCreditCustomers = payload.credit_customers ?? {
+    by_customer: [],
+    total: 0,
+  }
+  const supplierPayables: BalanceSheetSupplierPayables = payload.supplier_payables ?? {
+    by_supplier: [],
+    total: 0,
+  }
   const total_assets =
-    payload.total_assets ?? financialTotal + fixed.total + stock.total
+    payload.total_assets ??
+    financialTotal + fixed.total + stock.total + indebtedCustomers.total
 
   return {
     ...payload,
     financial_assets_total: financialTotal,
     fixed_assets: fixed,
     stock,
+    indebted_customers: indebtedCustomers,
+    credit_customers: creditCustomers,
+    supplier_payables: supplierPayables,
     total_assets,
   }
 }

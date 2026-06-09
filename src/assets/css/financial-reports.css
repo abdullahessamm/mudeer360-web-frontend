@@ -350,6 +350,31 @@
   color: #16a34a;
 }
 
+.bs-section-icon--receivable {
+  background: rgba(249, 115, 22, 0.12);
+  color: #ea580c;
+}
+
+.bs-section-icon--credit {
+  background: rgba(59, 130, 246, 0.12);
+  color: #2563eb;
+}
+
+.bs-section-icon--supplier {
+  background: rgba(234, 179, 8, 0.12);
+  color: #ca8a04;
+}
+
+.bs-section--nested {
+  margin-top: 0.75rem;
+  border-top: 1px solid var(--p-surface-200, #e2e8f0);
+  padding-top: 0.75rem;
+}
+
+.bs-section--nested .bs-section-head {
+  border-radius: 0.65rem;
+}
+
 .bs-section-icon--fixed {
   background: rgba(99, 102, 241, 0.1);
   color: #4f46e5;
