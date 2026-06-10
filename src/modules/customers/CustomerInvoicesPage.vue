@@ -235,6 +235,16 @@ function formatAmount(n: number) {
   return formatMoney(n)
 }
 
+function formatBalance(n: number | undefined) {
+  const val = n ?? 0
+  if (val < -0.001) {
+    return `${formatMoney(Math.abs(val))} (مدين)`
+  } else if (val > 0.001) {
+    return `${formatMoney(val)} (دائن)`
+  }
+  return formatMoney(0)
+}
+
 function sanitizeFilename(name: string) {
   return name.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'invoice'
 }
@@ -799,7 +809,7 @@ onMounted(async () => {
       <Card class="flex-1 min-w-10rem">
         <template #content>
           <div class="text-color-secondary text-sm mb-1">رصيد العميل</div>
-          <div class="text-xl font-bold text-primary">{{ formatAmount(customer.balance ?? 0) }}</div>
+          <div class="text-xl font-bold text-primary">{{ formatBalance(customer.balance) }}</div>
           <div class="flex flex-wrap gap-2 mt-2">
             <Button
               label="شحن رصيد"
@@ -942,9 +952,24 @@ onMounted(async () => {
       </Card>
       <Card class="flex-1 min-w-10rem">
         <template #content>
-          <div class="text-color-secondary text-sm mb-1">إجمالي المستحقات</div>
-          <div class="text-xl font-bold text-orange-600">
-            {{ formatAmount(invoiceSummary.total_dues) }}
+          <div class="flex align-items-center gap-2 mb-1">
+            <span class="text-color-secondary text-sm">إجمالي المستحقات</span>
+            <Tag
+              v-if="invoiceSummary.total_dues < -0.001"
+              value="مدين"
+              severity="danger"
+            />
+            <Tag
+              v-else-if="invoiceSummary.total_dues > 0.001"
+              value="دائن"
+              severity="success"
+            />
+          </div>
+          <div
+            class="text-xl font-bold"
+            :class="invoiceSummary.total_dues < -0.001 ? 'text-red-600' : invoiceSummary.total_dues > 0.001 ? 'text-green-600' : 'text-color-secondary'"
+          >
+            {{ formatAmount(Math.abs(invoiceSummary.total_dues)) }}
           </div>
         </template>
       </Card>
@@ -1564,10 +1589,9 @@ onMounted(async () => {
     >
       <div v-if="initialBalanceDialogVisible" class="flex flex-column gap-3">
         <p class="text-color-secondary text-sm line-height-3 m-0">
-          يُسجَّل كبند افتتاحي في رصيد العميل فقط — دون حركة نقدية أو اختيار حساب بنكي/صندوق. يمكن إدخال
-          قيمة سالبة إذا كان العميل يبدأ برصيد مدين (مستحق لك). أدخل
-          <strong>0</strong>
-          لإزالة الرصيد الافتتاحي إن وُجد.
+          يُسجَّل كبند افتتاحي في رصيد العميل فقط — دون حركة نقدية أو اختيار حساب بنكي/صندوق.
+          أدخل قيمة سالبة إذا كان العميل يبدأ برصيد مدين (مستحق لك)، أو قيمة موجبة إذا كان العميل يبدأ برصيد دائن (له رصيد مسبق لديك).
+          أدخل <strong>0</strong> لإزالة الرصيد الافتتاحي إن وُجد.
         </p>
         <div class="field">
           <label>المبلغ</label>

@@ -1116,6 +1116,9 @@ onMounted(async () => {
           class="w-full"
           autofocus
         />
+        <small class="text-color-secondary">
+          أدخل قيمة موجبة إذا كان المورد يطالبك بمستحقات (دائن)، أو قيمة سالبة إذا كان لديك رصيد مسبق لدى المورد (مدين).
+        </small>
       </div>
       <template #footer>
         <Button label="إلغاء" text @click="openingBalanceDialogVisible = false" />

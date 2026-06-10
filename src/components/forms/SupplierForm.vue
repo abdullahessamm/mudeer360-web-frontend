@@ -133,6 +133,9 @@ function errorMsg(field: keyof typeof form) {
         :maxFractionDigits="2"
         placeholder="0.00"
       />
+      <small class="text-color-secondary block mt-1">
+        أدخل قيمة موجبة إذا كان المورد يطالبك بمستحقات (دائن)، أو قيمة سالبة إذا كان لديك رصيد مسبق لدى المورد (مدين).
+      </small>
     </div>
     <div class="field">
       <label for="s-notes">ملاحظات</label>

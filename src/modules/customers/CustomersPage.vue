@@ -111,7 +111,13 @@ function onPageChange(page: number) {
 }
 
 function formatBalance(n: number | undefined) {
-  return formatMoney(n ?? 0)
+  const val = n ?? 0
+  if (val < -0.001) {
+    return `${formatMoney(Math.abs(val))} مدين`
+  } else if (val > 0.001) {
+    return `${formatMoney(val)} دائن`
+  }
+  return formatMoney(0)
 }
 
 onMounted(() => {
