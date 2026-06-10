@@ -10,6 +10,7 @@ const store = useFinancialReportsStore()
 
 const showCashDetails = ref(true)
 const showIndebtedCustomersDetails = ref(true)
+const showSupplierDebitDetails = ref(true)
 const showFixedDetails = ref(true)
 const showStockDetails = ref(true)
 const showCreditCustomersDetails = ref(true)
@@ -93,6 +94,18 @@ const supplierPayables = computed(
 const supplierPayablesTotal = computed(() => supplierPayables.value.total)
 
 const supplierPayablesCount = computed(() => supplierPayables.value.by_supplier.length)
+
+const supplierDebitAssets = computed(
+  () =>
+    sheet.value?.supplier_debit_assets ?? {
+      by_supplier: [],
+      total: 0,
+    },
+)
+
+const supplierDebitAssetsTotal = computed(() => supplierDebitAssets.value.total)
+
+const supplierDebitAssetsCount = computed(() => supplierDebitAssets.value.by_supplier.length)
 
 const liabilityRows = computed(() => {
   const L = sheet.value?.liabilities
@@ -302,6 +315,49 @@ onMounted(() => {
               </div>
             </Transition>
           </div>
+          <div class="bs-section">
+            <button
+              type="button"
+              class="bs-section-head"
+              :aria-expanded="showSupplierDebitDetails"
+              @click="showSupplierDebitDetails = !showSupplierDebitDetails"
+            >
+              <span class="bs-section-icon bs-section-icon--supplier"><i class="pi pi-truck"></i></span>
+              <span class="bs-section-info">
+                <span class="bs-section-title">ذمم الموردين (مدين)</span>
+                <span class="bs-section-meta">{{ supplierDebitAssetsCount }} مورد</span>
+              </span>
+              <span class="bs-section-amount">{{ fmt(supplierDebitAssetsTotal) }}</span>
+              <i class="pi bs-section-chevron" :class="showSupplierDebitDetails ? 'pi-chevron-up' : 'pi-chevron-down'"></i>
+            </button>
+            <Transition name="bs-expand">
+              <div v-show="showSupplierDebitDetails" class="bs-section-body">
+                <p class="bs-stock-formula text-sm text-color-secondary m-0 mb-3">
+                  المتبقي للاستلام − المتبقي سداده للمورد (عندما يكون المتبقي للاستلام أكبر)
+                </p>
+                <p v-if="!supplierDebitAssets.by_supplier.length" class="bs-empty">
+                  <i class="pi pi-inbox"></i>
+                  لا توجد أرصدة مدينة للموردين
+                </p>
+                <div v-else class="bs-table-wrap">
+                  <table class="bs-table">
+                    <thead>
+                      <tr>
+                        <th>المورد</th>
+                        <th class="bs-td-num">المبلغ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in supplierDebitAssets.by_supplier" :key="row.id">
+                        <td class="bs-td-strong">{{ row.name }}</td>
+                        <td class="bs-td-num">{{ fmt(row.balance) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </Transition>
+          </div>
 
           <div class="bs-section">
             <button
@@ -448,7 +504,7 @@ onMounted(() => {
                   <Transition name="bs-expand">
                     <div v-show="showSupplierPayablesDetails" class="bs-section-body">
                       <p class="bs-stock-formula text-sm text-color-secondary m-0 mb-3">
-                        المتبقي على فواتير الشراء غير المسددة أو المسددة جزئياً
+                        المتبقي سداده للمورد − المتبقي للاستلام (عندما يكون المتبقي سداده أكبر)
                       </p>
                       <p v-if="!supplierPayables.by_supplier.length" class="bs-empty">
                         <i class="pi pi-inbox"></i>

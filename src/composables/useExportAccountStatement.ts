@@ -101,7 +101,7 @@ export function exportAccountStatement(options: ExportAccountStatementOptions): 
   worksheet['!cols'] = colWidths
 
   const workbook = XLSX.utils.book_new()
-  const safeName = accountName.replace(/[/\\?*\[\]]/g, '_').slice(0, 31)
+  const safeName = accountName.replace(/[/\\?*[\]]/g, '_').slice(0, 31)
   const sheetName = accountType === 'customer' ? 'كشف حساب عميل' : 'كشف حساب مورد'
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
 

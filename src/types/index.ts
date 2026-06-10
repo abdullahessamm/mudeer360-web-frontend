@@ -79,6 +79,7 @@ export interface Supplier {
   email: string | null
   address: string | null
   notes: string | null
+  opening_balance?: number
   created_at?: string
   updated_at?: string
 }

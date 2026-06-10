@@ -136,6 +136,8 @@ export interface BalanceSheetPayload {
   stock?: BalanceSheetStock
   /** Sum of indebted customer balances (ذمم العملاء). */
   indebted_customers?: BalanceSheetIndebtedCustomers
+  /** Supplier debit assets (ذمم الموردين المدنية). */
+  supplier_debit_assets?: BalanceSheetSupplierPayables
   /** Customer credit liabilities (أرصدة عملاء دائنة). */
   credit_customers?: BalanceSheetCreditCustomers
   /** Supplier payables (ذمم الموردين). */
@@ -163,6 +165,10 @@ function normalizeBalanceSheet(payload: BalanceSheetPayload): BalanceSheetPayloa
     by_customer: [],
     total: 0,
   }
+  const supplierDebitAssets: BalanceSheetSupplierPayables = payload.supplier_debit_assets ?? {
+    by_supplier: [],
+    total: 0,
+  }
   const creditCustomers: BalanceSheetCreditCustomers = payload.credit_customers ?? {
     by_customer: [],
     total: 0,
@@ -173,7 +179,7 @@ function normalizeBalanceSheet(payload: BalanceSheetPayload): BalanceSheetPayloa
   }
   const total_assets =
     payload.total_assets ??
-    financialTotal + fixed.total + stock.total + indebtedCustomers.total
+    financialTotal + fixed.total + stock.total + indebtedCustomers.total + supplierDebitAssets.total
 
   return {
     ...payload,
@@ -181,6 +187,7 @@ function normalizeBalanceSheet(payload: BalanceSheetPayload): BalanceSheetPayloa
     fixed_assets: fixed,
     stock,
     indebted_customers: indebtedCustomers,
+    supplier_debit_assets: supplierDebitAssets,
     credit_customers: creditCustomers,
     supplier_payables: supplierPayables,
     total_assets,

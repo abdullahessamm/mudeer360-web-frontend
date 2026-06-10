@@ -52,6 +52,40 @@ const issuedAtLabel = computed(() =>
 
 const supplierId = computed(() => Number(route.params.id))
 
+const openingBalanceDialogVisible = ref(false)
+const openingBalanceValue = ref(0)
+const updatingOpeningBalance = ref(false)
+
+function openEditOpeningBalance() {
+  if (!supplier.value) return
+  openingBalanceValue.value = supplier.value.opening_balance ?? 0
+  openingBalanceDialogVisible.value = true
+}
+
+async function saveOpeningBalance() {
+  if (!supplier.value) return
+  updatingOpeningBalance.value = true
+  try {
+    const updated = await store.update(supplier.value.id, {
+      ...supplier.value,
+      opening_balance: openingBalanceValue.value,
+    })
+    if (updated) {
+      supplier.value = {
+        ...supplier.value,
+        opening_balance: updated.opening_balance,
+      }
+      showSuccess('تم تحديث الرصيد الافتتاحي بنجاح')
+      openingBalanceDialogVisible.value = false
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'فشل تحديث الرصيد الافتتاحي'
+    showError(msg)
+  } finally {
+    updatingOpeningBalance.value = false
+  }
+}
+
 const filters = ref({
   dateRange: getCurrentMonthRange() as [Date, Date] | null,
 })
@@ -90,12 +124,13 @@ const invoices = computed(() => {
 
 const invoiceSummary = computed(() => {
   const list = invoices.value
+  const opening = supplier.value?.opening_balance ?? 0
   const totalAmount = list.reduce((sum, inv) => sum + inv.total_amount, 0)
   const paidAmount = list.reduce((sum, inv) => sum + inv.paid_amount, 0)
   const remainingAmount = list.reduce(
     (sum, inv) => sum + Math.max(0, inv.total_amount - inv.paid_amount),
     0,
-  )
+  ) + opening
   let totalReceived = 0
   let totalRemainingReceive = 0
   for (const inv of list) {
@@ -534,6 +569,23 @@ onMounted(async () => {
       <Button v-if="supplier" label="إضافة فاتورة" icon="pi pi-plus" @click="openCreateInvoice" />
     </div>
 
+    <div v-if="supplier" class="flex flex-wrap gap-3 mb-4">
+      <Card class="flex-1 min-w-10rem">
+        <template #content>
+          <div class="text-color-secondary text-sm mb-1">الرصيد الافتتاحي للمورد</div>
+          <div class="text-xl font-bold text-primary">{{ formatAmount(supplier.opening_balance ?? 0) }}</div>
+          <div class="flex flex-wrap gap-2 mt-2">
+            <Button
+              label="تعديل الرصيد الافتتاحي"
+              icon="pi pi-pencil"
+              size="small"
+              @click="openEditOpeningBalance"
+            />
+          </div>
+        </template>
+      </Card>
+    </div>
+
     <div v-if="supplier && invoices.length > 0" class="flex flex-wrap gap-3 mb-4">
       <Card class="flex-1 min-w-10rem">
         <template #content>
@@ -581,9 +633,24 @@ onMounted(async () => {
       </Card>
       <Card class="flex-1 min-w-10rem">
         <template #content>
-          <div class="text-color-secondary text-sm mb-1">إجمالي المستحقات</div>
-          <div class="text-xl font-bold text-orange-600">
-            {{ formatAmount(invoiceSummary.total_dues) }}
+          <div class="flex align-items-center gap-2 mb-1">
+            <span class="text-color-secondary text-sm">إجمالي المستحقات</span>
+            <Tag
+              v-if="invoiceSummary.total_dues < -0.001"
+              value="دائن"
+              severity="success"
+            />
+            <Tag
+              v-else-if="invoiceSummary.total_dues > 0.001"
+              value="مدين"
+              severity="danger"
+            />
+          </div>
+          <div
+            class="text-xl font-bold"
+            :class="invoiceSummary.total_dues < -0.001 ? 'text-green-600' : invoiceSummary.total_dues > 0.001 ? 'text-red-600' : 'text-color-secondary'"
+          >
+            {{ formatAmount(Math.abs(invoiceSummary.total_dues)) }}
           </div>
         </template>
       </Card>
@@ -1029,6 +1096,31 @@ onMounted(async () => {
         @submit="onPaymentFormSubmit"
         @cancel="onPaymentFormCancel"
       />
+    </Dialog>
+
+    <!-- Edit Opening Balance Dialog -->
+    <Dialog
+      v-model:visible="openingBalanceDialogVisible"
+      header="تعديل الرصيد الافتتاحي"
+      :modal="true"
+      :style="{ width: '360px' }"
+    >
+      <div class="field flex flex-column gap-2 mt-2">
+        <label for="opening-balance-input">الرصيد الافتتاحي</label>
+        <InputNumber
+          id="opening-balance-input"
+          v-model="openingBalanceValue"
+          mode="decimal"
+          :minFractionDigits="2"
+          :maxFractionDigits="2"
+          class="w-full"
+          autofocus
+        />
+      </div>
+      <template #footer>
+        <Button label="إلغاء" text @click="openingBalanceDialogVisible = false" />
+        <Button label="حفظ" icon="pi pi-check" :loading="updatingOpeningBalance" @click="saveOpeningBalance" />
+      </template>
     </Dialog>
   </div>
 </template>

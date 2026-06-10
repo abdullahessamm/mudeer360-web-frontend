@@ -88,6 +88,7 @@ export const useSuppliersStore = defineStore('suppliers', () => {
         email: supplier.email || undefined,
         address: supplier.address || undefined,
         notes: supplier.notes || undefined,
+        opening_balance: supplier.opening_balance,
       })
       const created = unwrapPayload<Supplier>(data)
       items.value = [created, ...items.value]
@@ -110,6 +111,7 @@ export const useSuppliersStore = defineStore('suppliers', () => {
         email: supplier.email,
         address: supplier.address,
         notes: supplier.notes,
+        opening_balance: supplier.opening_balance,
       })
       const updated = unwrapPayload<Supplier>(data)
       const idx = items.value.findIndex((s) => s.id === id)

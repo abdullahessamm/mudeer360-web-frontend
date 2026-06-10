@@ -20,6 +20,7 @@ const form = reactive({
   email: props.modelValue?.email ?? '',
   address: props.modelValue?.address ?? '',
   notes: props.modelValue?.notes ?? '',
+  opening_balance: props.modelValue?.opening_balance ?? 0,
 })
 
 watch(
@@ -31,6 +32,7 @@ watch(
       form.email = v.email ?? ''
       form.address = v.address ?? ''
       form.notes = v.notes ?? ''
+      form.opening_balance = v.opening_balance ?? 0
     }
   },
   { immediate: true },
@@ -50,6 +52,7 @@ async function onSubmit() {
     email: form.email?.trim() || undefined,
     address: form.address?.trim() || undefined,
     notes: form.notes?.trim() || undefined,
+    opening_balance: form.opening_balance,
   })
 }
 
@@ -118,6 +121,18 @@ function errorMsg(field: keyof typeof form) {
         @blur="v$.address.$touch()"
       />
       <small v-if="v$.address.$error" class="p-error">{{ errorMsg('address') }}</small>
+    </div>
+    <div class="field">
+      <label for="s-opening-balance">الرصيد الافتتاحي</label>
+      <InputNumber
+        id="s-opening-balance"
+        v-model="form.opening_balance"
+        class="w-full mt-1"
+        mode="decimal"
+        :minFractionDigits="2"
+        :maxFractionDigits="2"
+        placeholder="0.00"
+      />
     </div>
     <div class="field">
       <label for="s-notes">ملاحظات</label>
