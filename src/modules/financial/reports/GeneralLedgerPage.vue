@@ -54,6 +54,45 @@ function entryDescription(row: {
   return row.line_description || row.description || '—'
 }
 
+const groupedAccounts = computed(() => {
+  if (!ledger.value?.accounts) return []
+  
+  const groups: Record<string, typeof ledger.value.accounts> = {
+    asset: [],
+    liability: [],
+    equity: [],
+    income: [],
+    expense: []
+  }
+  
+  ledger.value.accounts.forEach(account => {
+    const type = account.type
+    if (!groups[type]) {
+      groups[type] = []
+    }
+    groups[type].push(account)
+  })
+  
+  return Object.entries(groups)
+    .filter(([_, list]) => list.length > 0)
+    .map(([type, list]) => ({
+      type,
+      name: typeLabel(type),
+      accounts: list
+    }))
+})
+
+function groupIcon(type: string) {
+  const icons: Record<string, string> = {
+    asset: 'pi-wallet',
+    liability: 'pi-credit-card',
+    equity: 'pi-users',
+    income: 'pi-arrow-down-left',
+    expense: 'pi-arrow-up-right'
+  }
+  return icons[type] ?? 'pi-folder'
+}
+
 async function load() {
   const range = dateRange.value
   if (!range?.[0] || !range?.[1]) {
@@ -126,87 +165,120 @@ onMounted(async () => {
         لا توجد حركة في دليل الحسابات خلال هذه الفترة
       </p>
 
-      <section
-        v-for="account in ledger.accounts"
-        :key="account.id"
-        class="bs-panel bs-panel--ledger"
+      <div
+        v-for="group in groupedAccounts"
+        :key="group.type"
+        class="bs-ledger-group"
       >
-        <header class="bs-panel-head">
-          <div class="bs-panel-head-main">
-            <span class="bs-panel-icon"><i class="pi pi-book"></i></span>
-            <div>
-              <h2>{{ account.code }} — {{ account.name }}</h2>
-              <span class="bs-panel-sub">{{ typeLabel(account.type) }}</span>
+        <h3 class="bs-ledger-group-title">
+          <i class="pi" :class="groupIcon(group.type)"></i>
+          {{ group.name }}
+        </h3>
+
+        <section
+          v-for="account in group.accounts"
+          :key="account.id"
+          class="bs-panel bs-panel--ledger"
+        >
+          <header class="bs-panel-head">
+            <div class="bs-panel-head-main">
+              <span class="bs-panel-icon"><i class="pi pi-book"></i></span>
+              <div>
+                <h2>{{ account.code }} — {{ account.name }}</h2>
+                <span class="bs-panel-sub">{{ typeLabel(account.type) }}</span>
+              </div>
+            </div>
+            <span class="bs-panel-total">{{ fmt(account.closing_balance) }}</span>
+          </header>
+
+          <div class="bs-gl-summary">
+            <div class="bs-gl-summary-item">
+              <span class="bs-gl-summary-label">رصيد افتتاحي</span>
+              <span class="bs-gl-summary-value">{{ fmt(account.opening_balance) }}</span>
+            </div>
+            <div class="bs-gl-summary-item">
+              <span class="bs-gl-summary-label">مجموع المدين</span>
+              <span class="bs-gl-summary-value bs-td-in">{{ fmt(account.total_debit) }}</span>
+            </div>
+            <div class="bs-gl-summary-item">
+              <span class="bs-gl-summary-label">مجموع الدائن</span>
+              <span class="bs-gl-summary-value bs-td-out">{{ fmt(account.total_credit) }}</span>
+            </div>
+            <div class="bs-gl-summary-item">
+              <span class="bs-gl-summary-label">رصيد ختامي</span>
+              <span class="bs-gl-summary-value">{{ fmt(account.closing_balance) }}</span>
             </div>
           </div>
-          <span class="bs-panel-total">{{ fmt(account.closing_balance) }}</span>
-        </header>
 
-        <div class="bs-gl-summary">
-          <div class="bs-gl-summary-item">
-            <span class="bs-gl-summary-label">رصيد افتتاحي</span>
-            <span class="bs-gl-summary-value">{{ fmt(account.opening_balance) }}</span>
+          <div class="bs-panel-body-pad">
+            <p v-if="!account.entries.length" class="bs-empty">
+              <i class="pi pi-inbox"></i>
+              لا توجد قيود في هذه الفترة
+            </p>
+            <div v-else class="bs-table-wrap">
+              <table class="bs-table">
+                <thead>
+                  <tr>
+                    <th>التاريخ</th>
+                    <th>رقم القيد</th>
+                    <th>البيان</th>
+                    <th class="bs-td-num">مدين</th>
+                    <th class="bs-td-num">دائن</th>
+                    <th class="bs-td-num">الرصيد</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="account.opening_balance !== 0" class="bs-gl-opening-row">
+                    <td colspan="3" class="bs-td-strong">رصيد افتتاحي</td>
+                    <td class="bs-td-num">—</td>
+                    <td class="bs-td-num">—</td>
+                    <td class="bs-td-num">{{ fmt(account.opening_balance) }}</td>
+                  </tr>
+                  <tr v-for="row in account.entries" :key="row.id">
+                    <td>{{ row.date }}</td>
+                    <td class="bs-td-mono">{{ row.entry_number }}</td>
+                    <td>{{ entryDescription(row) }}</td>
+                    <td class="bs-td-num bs-td-in">
+                      {{ row.debit > 0 ? fmt(row.debit) : '—' }}
+                    </td>
+                    <td class="bs-td-num bs-td-out">
+                      {{ row.credit > 0 ? fmt(row.credit) : '—' }}
+                    </td>
+                    <td class="bs-td-num">{{ fmt(row.balance) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div class="bs-gl-summary-item">
-            <span class="bs-gl-summary-label">مجموع المدين</span>
-            <span class="bs-gl-summary-value bs-td-in">{{ fmt(account.total_debit) }}</span>
-          </div>
-          <div class="bs-gl-summary-item">
-            <span class="bs-gl-summary-label">مجموع الدائن</span>
-            <span class="bs-gl-summary-value bs-td-out">{{ fmt(account.total_credit) }}</span>
-          </div>
-          <div class="bs-gl-summary-item">
-            <span class="bs-gl-summary-label">رصيد ختامي</span>
-            <span class="bs-gl-summary-value">{{ fmt(account.closing_balance) }}</span>
-          </div>
-        </div>
 
-        <div class="bs-panel-body-pad">
-          <p v-if="!account.entries.length" class="bs-empty">
-            <i class="pi pi-inbox"></i>
-            لا توجد قيود في هذه الفترة
-          </p>
-          <div v-else class="bs-table-wrap">
-            <table class="bs-table">
-              <thead>
-                <tr>
-                  <th>التاريخ</th>
-                  <th>رقم القيد</th>
-                  <th>البيان</th>
-                  <th class="bs-td-num">مدين</th>
-                  <th class="bs-td-num">دائن</th>
-                  <th class="bs-td-num">الرصيد</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="account.opening_balance !== 0" class="bs-gl-opening-row">
-                  <td colspan="3" class="bs-td-strong">رصيد افتتاحي</td>
-                  <td class="bs-td-num">—</td>
-                  <td class="bs-td-num">—</td>
-                  <td class="bs-td-num">{{ fmt(account.opening_balance) }}</td>
-                </tr>
-                <tr v-for="row in account.entries" :key="row.id">
-                  <td>{{ row.date }}</td>
-                  <td class="bs-td-mono">{{ row.entry_number }}</td>
-                  <td>{{ entryDescription(row) }}</td>
-                  <td class="bs-td-num bs-td-in">
-                    {{ row.debit > 0 ? fmt(row.debit) : '—' }}
-                  </td>
-                  <td class="bs-td-num bs-td-out">
-                    {{ row.credit > 0 ? fmt(row.credit) : '—' }}
-                  </td>
-                  <td class="bs-td-num">{{ fmt(row.balance) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <footer class="bs-panel-foot bs-panel-foot--closing">
-          <span>الرصيد الختامي — {{ account.name }}</span>
-          <span>{{ fmt(account.closing_balance) }}</span>
-        </footer>
-      </section>
+          <footer class="bs-panel-foot bs-panel-foot--closing">
+            <span>الرصيد الختامي — {{ account.name }}</span>
+            <span>{{ fmt(account.closing_balance) }}</span>
+          </footer>
+        </section>
+      </div>
     </template>
   </FinancialReportShell>
 </template>
+
+<style scoped>
+.bs-ledger-group {
+  margin-bottom: 2.5rem;
+}
+.bs-ledger-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin-top: 0;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--surface-border);
+}
+.bs-ledger-group-title .pi {
+  font-size: 1.1rem;
+  color: var(--p-primary-color, #008cff);
+}
+</style>
