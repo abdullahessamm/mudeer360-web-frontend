@@ -13,9 +13,9 @@ import { useProductsStore } from '@/stores/products'
 import { useFinancialAccountsStore } from '@/stores/financialAccounts'
 import PurchaseInvoiceForm from '@/components/forms/PurchaseInvoiceForm.vue'
 import PaymentForm from '@/components/forms/PaymentForm.vue'
-import type { SupplierWithInvoices } from '@/types'
+import Paginator from 'primevue/paginator'
+import type { SupplierWithInvoices, InvoicePaymentLine, SupplierBalanceTransaction, PaginatedPayload } from '@/types'
 import type { PurchaseInvoice, PurchaseInvoiceCreatePayload, PaymentPayload } from '@/types'
-import type { FinancialTransaction } from '@/types'
 import { formatMoney, formatIssuedAt } from '@/lib/format'
 
 const route = useRoute()
@@ -52,38 +52,204 @@ const issuedAtLabel = computed(() =>
 
 const supplierId = computed(() => Number(route.params.id))
 
-const openingBalanceDialogVisible = ref(false)
-const openingBalanceValue = ref(0)
-const updatingOpeningBalance = ref(false)
+// Dialog visibility flags
+const chargeDialogVisible = ref(false)
+const withdrawDialogVisible = ref(false)
+const initialBalanceDialogVisible = ref(false)
+const balanceHistoryDialogVisible = ref(false)
 
-function openEditOpeningBalance() {
-  if (!supplier.value) return
-  openingBalanceValue.value = supplier.value.opening_balance ?? 0
-  openingBalanceDialogVisible.value = true
+// Forms data refs
+const chargeForm = ref({
+  amount: 0,
+  date: formatDateLocal(new Date()),
+  financial_account_id: null as number | null,
+  description: '',
+})
+
+const withdrawForm = ref({
+  amount: 0,
+  date: formatDateLocal(new Date()),
+  financial_account_id: null as number | null,
+  description: '',
+})
+
+const initialBalanceForm = ref({
+  amount: 0,
+  date: formatDateLocal(new Date()),
+  description: '',
+})
+
+const balanceTxRows = ref<SupplierBalanceTransaction[]>([])
+const balanceTxMeta = ref<PaginatedPayload<SupplierBalanceTransaction>['meta'] | null>(null)
+const balanceTxLoading = ref(false)
+
+function formatBalance(n: number | undefined) {
+  const val = n ?? 0
+  if (val < -0.001) {
+    return `${formatMoney(Math.abs(val))} دائن`
+  } else if (val > 0.001) {
+    return `${formatMoney(val)} مدين`
+  }
+  return formatMoney(0)
 }
 
-async function saveOpeningBalance() {
-  if (!supplier.value) return
-  updatingOpeningBalance.value = true
-  try {
-    const updated = await store.update(supplier.value.id, {
-      ...supplier.value,
-      opening_balance: openingBalanceValue.value,
-    })
-    if (updated) {
-      supplier.value = {
-        ...supplier.value,
-        opening_balance: updated.opening_balance,
-      }
-      showSuccess('تم تحديث الرصيد الافتتاحي بنجاح')
-      openingBalanceDialogVisible.value = false
-    }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'فشل تحديث الرصيد الافتتاحي'
-    showError(msg)
-  } finally {
-    updatingOpeningBalance.value = false
+function balanceTxTypeLabel(type: string) {
+  const map: Record<string, string> = {
+    manual_charge: 'شحن رصيد (إيداع)',
+    manual_withdraw: 'سحب رصيد',
+    invoice_payment: 'دفع فاتورة شراء',
+    initial_balance: 'رصيد افتتاحي',
   }
+  return map[type] ?? type
+}
+
+function openChargeDialog() {
+  chargeForm.value = {
+    amount: 0,
+    date: formatDateLocal(new Date()),
+    financial_account_id: accountOptions.value[0]?.value ?? null,
+    description: '',
+  }
+  chargeDialogVisible.value = true
+}
+
+function setChargeDate(v: Date | Date[] | (Date | null)[] | null | undefined) {
+  const raw = Array.isArray(v) ? v[0] : v
+  const d = raw instanceof Date ? raw : new Date()
+  chargeForm.value.date = formatDateLocal(d)
+}
+
+async function onChargeSubmit() {
+  if (!supplier.value || chargeForm.value.amount <= 0) return
+  try {
+    await store.chargeBalance(supplier.value.id, {
+      amount: chargeForm.value.amount,
+      date: chargeForm.value.date,
+      description: chargeForm.value.description || undefined,
+      financial_account_id: chargeForm.value.financial_account_id ?? undefined,
+    })
+    showSuccess('تم شحن رصيد المورد بنجاح')
+    chargeDialogVisible.value = false
+    await refetchSupplier()
+    if (balanceHistoryDialogVisible.value) {
+      await loadBalanceHistory(balanceTxMeta.value?.current_page ?? 1)
+    }
+  } catch {
+    // toast handled by watch
+  }
+}
+
+function openWithdrawDialog() {
+  withdrawForm.value = {
+    amount: 0,
+    date: formatDateLocal(new Date()),
+    financial_account_id: accountOptions.value[0]?.value ?? null,
+    description: '',
+  }
+  withdrawDialogVisible.value = true
+}
+
+function setWithdrawDate(v: Date | Date[] | (Date | null)[] | null | undefined) {
+  const raw = Array.isArray(v) ? v[0] : v
+  const d = raw instanceof Date ? raw : new Date()
+  withdrawForm.value.date = formatDateLocal(d)
+}
+
+async function onWithdrawSubmit() {
+  if (!supplier.value || withdrawForm.value.amount <= 0) return
+  try {
+    await store.withdrawBalance(supplier.value.id, {
+      amount: withdrawForm.value.amount,
+      date: withdrawForm.value.date,
+      description: withdrawForm.value.description || undefined,
+      financial_account_id: withdrawForm.value.financial_account_id ?? undefined,
+    })
+    showSuccess('تم سحب رصيد المورد بنجاح')
+    withdrawDialogVisible.value = false
+    await refetchSupplier()
+    if (balanceHistoryDialogVisible.value) {
+      await loadBalanceHistory(balanceTxMeta.value?.current_page ?? 1)
+    }
+  } catch {
+    // toast handled by watch
+  }
+}
+
+async function openInitialBalanceDialog() {
+  initialBalanceForm.value = {
+    amount: 0,
+    date: formatDateLocal(new Date()),
+    description: '',
+  }
+  initialBalanceDialogVisible.value = true
+  if (!supplier.value) return
+  try {
+    const res = await store.fetchBalanceTransactions(supplier.value.id, 1, 1, 'initial_balance')
+    const row = res.data[0]
+    if (row) {
+      initialBalanceForm.value = {
+        amount: row.change_amount,
+        date:
+          typeof row.date === 'string'
+            ? row.date.slice(0, 10)
+            : formatDateLocal(new Date(row.date)),
+        description: row.description ?? '',
+      }
+    }
+  } catch {
+    // keep defaults
+  }
+}
+
+function setInitialBalanceDate(v: Date | Date[] | (Date | null)[] | null | undefined) {
+  const raw = Array.isArray(v) ? v[0] : v
+  const d = raw instanceof Date ? raw : new Date()
+  initialBalanceForm.value.date = formatDateLocal(d)
+}
+
+async function onInitialBalanceSubmit() {
+  if (!supplier.value) return
+  const raw = initialBalanceForm.value.amount
+  if (raw === null || raw === undefined || Number.isNaN(Number(raw))) {
+    showError('أدخل المبلغ (أو 0 لإزالة الرصيد الافتتاحي)')
+    return
+  }
+  let amount = Number(raw)
+  if (Math.abs(amount) < 0.0001) amount = 0
+  try {
+    await store.setInitialBalance(supplier.value.id, {
+      amount,
+      date: initialBalanceForm.value.date,
+      description: initialBalanceForm.value.description.trim() || undefined,
+    })
+    showSuccess(amount === 0 ? 'تم إلغاء الرصيد الافتتاحي' : 'تم حفظ الرصيد الافتتاحي')
+    initialBalanceDialogVisible.value = false
+    await refetchSupplier()
+    if (balanceHistoryDialogVisible.value) {
+      await loadBalanceHistory(balanceTxMeta.value?.current_page ?? 1)
+    }
+  } catch {
+    // toast handled by watch
+  }
+}
+
+async function loadBalanceHistory(page = 1) {
+  if (!supplier.value) return
+  balanceTxLoading.value = true
+  try {
+    const res = await store.fetchBalanceTransactions(supplier.value.id, page, 15)
+    balanceTxRows.value = res.data
+    balanceTxMeta.value = res.meta
+  } catch {
+    balanceTxRows.value = []
+    balanceTxMeta.value = null
+  } finally {
+    balanceTxLoading.value = false
+  }
+}
+
+function onBalanceTxPage(e: { page: number; first: number; rows: number }) {
+  loadBalanceHistory(e.page + 1)
 }
 
 const filters = ref({
@@ -124,13 +290,14 @@ const invoices = computed(() => {
 
 const invoiceSummary = computed(() => {
   const list = invoices.value
-  const opening = supplier.value?.opening_balance ?? 0
+  const balanceVal = supplier.value?.balance ?? 0
   const totalAmount = list.reduce((sum, inv) => sum + inv.total_amount, 0)
   const paidAmount = list.reduce((sum, inv) => sum + inv.paid_amount, 0)
-  const remainingAmount = list.reduce(
+  const remainingInvoices = list.reduce(
     (sum, inv) => sum + Math.max(0, inv.total_amount - inv.paid_amount),
     0,
-  ) + opening
+  )
+  const remainingAmount = -balanceVal + remainingInvoices
   let totalReceived = 0
   let totalRemainingReceive = 0
   for (const inv of list) {
@@ -384,6 +551,7 @@ function openAddPayment() {
   editingPaymentId.value = null
   paymentFormModel.value = {
     amount: remainingAmount.value,
+    balance_amount: 0,
     date: formatDateLocal(new Date()),
     financial_account_id: accountOptions.value[0]?.value ?? 0,
     description: '',
@@ -391,7 +559,8 @@ function openAddPayment() {
   paymentDialogVisible.value = true
 }
 
-function openEditPayment(payment: FinancialTransaction) {
+function openEditPayment(payment: InvoicePaymentLine) {
+  if (payment.payment_type !== 'cash') return
   isEditPayment.value = true
   editingPaymentId.value = payment.id
   paymentFormModel.value = {
@@ -467,7 +636,7 @@ async function onUnreceiveItem(invoice: PurchaseInvoice, item: { id?: number }) 
   }
 }
 
-function confirmDeletePayment(payment: FinancialTransaction) {
+function confirmDeletePayment(payment: InvoicePaymentLine) {
   if (!selectedInvoice.value) return
   confirm.require({
     message: `هل أنت متأكد من حذف هذه الدفعة (${payment.amount})؟`,
@@ -480,7 +649,11 @@ function confirmDeletePayment(payment: FinancialTransaction) {
     acceptIcon: 'pi pi-trash',
     accept: async () => {
       try {
-        await purchasesStore.deletePayment(selectedInvoice.value!.id, payment.id)
+        if (payment.payment_type === 'balance') {
+          await purchasesStore.deleteBalancePayment(selectedInvoice.value!.id, payment.id)
+        } else {
+          await purchasesStore.deletePayment(selectedInvoice.value!.id, payment.id)
+        }
         showSuccess('تم حذف الدفعة بنجاح')
         await purchasesStore.fetchPayments(selectedInvoice.value!.id)
         selectedInvoice.value = { ...selectedInvoice.value!, payments: purchasesStore.payments }
@@ -572,19 +745,101 @@ onMounted(async () => {
     <div v-if="supplier" class="flex flex-wrap gap-3 mb-4">
       <Card class="flex-1 min-w-10rem">
         <template #content>
-          <div class="text-color-secondary text-sm mb-1">الرصيد الافتتاحي للمورد</div>
-          <div class="text-xl font-bold text-primary">{{ formatAmount(supplier.opening_balance ?? 0) }}</div>
+          <div class="text-color-secondary text-sm mb-1">رصيد المورد</div>
+          <div class="text-xl font-bold text-primary">{{ formatBalance(supplier.balance) }}</div>
           <div class="flex flex-wrap gap-2 mt-2">
             <Button
-              label="تعديل الرصيد الافتتاحي"
-              icon="pi pi-pencil"
+              label="شحن رصيد"
+              icon="pi pi-wallet"
               size="small"
-              @click="openEditOpeningBalance"
+              @click="openChargeDialog"
+            />
+            <Button
+              label="الرصيد الافتتاحي"
+              icon="pi pi-bookmark"
+              size="small"
+              severity="info"
+              outlined
+              @click="openInitialBalanceDialog"
+            />
+            <Button
+              label="سحب رصيد"
+              icon="pi pi-money-bill"
+              size="small"
+              severity="secondary"
+              @click="openWithdrawDialog"
+            />
+            <Button
+              label="سجل الرصيد"
+              icon="pi pi-history"
+              size="small"
+              severity="help"
+              outlined
+              @click="balanceHistoryDialogVisible = true"
             />
           </div>
         </template>
       </Card>
     </div>
+
+    <Dialog
+      v-model:visible="balanceHistoryDialogVisible"
+      header="سجل حركة رصيد المورد"
+      :modal="true"
+      :style="{ width: '100%', maxWidth: '960px', margin: '0 16px' }"
+      :content-style="{ maxHeight: 'min(70vh, 560px)', overflow: 'auto' }"
+      @show="() => loadBalanceHistory(1)"
+    >
+      <div class="flex flex-column gap-3">
+        <DataTable
+          :value="balanceTxRows"
+          data-key="id"
+          striped-rows
+          responsive-layout="scroll"
+          class="p-datatable-sm"
+          :loading="balanceTxLoading"
+        >
+          <Column field="date" header="التاريخ" />
+          <Column field="type" header="النوع">
+            <template #body="{ data }">{{ balanceTxTypeLabel(data.type) }}</template>
+          </Column>
+          <Column field="change_amount" header="المبلغ">
+            <template #body="{ data }">
+              <Tag
+                :value="formatAmount(data.change_amount)"
+                :severity="data.change_amount >= 0 ? 'success' : 'danger'"
+              />
+            </template>
+          </Column>
+          <Column field="invoice_number" header="فاتورة">
+            <template #body="{ data }">{{ data.invoice_number ?? '—' }}</template>
+          </Column>
+          <Column header="تسجيل نقدي">
+            <template #body="{ data }">
+              <Tag
+                v-if="(data.financial_transactions?.length ?? 0) > 0"
+                value="نعم"
+                severity="info"
+              />
+              <span v-else class="text-color-secondary">—</span>
+            </template>
+          </Column>
+          <Column field="description" header="الوصف">
+            <template #body="{ data }">{{ data.description || '—' }}</template>
+          </Column>
+        </DataTable>
+        <Paginator
+          v-if="balanceTxMeta && balanceTxMeta.total > 0"
+          :rows="balanceTxMeta.per_page"
+          :total-records="balanceTxMeta.total"
+          :first="(balanceTxMeta.current_page - 1) * balanceTxMeta.per_page"
+          @page="onBalanceTxPage"
+        />
+        <p v-if="!balanceTxLoading && balanceTxRows.length === 0" class="text-color-secondary m-0">
+          لا توجد حركات رصيد
+        </p>
+      </div>
+    </Dialog>
 
     <div v-if="supplier && invoices.length > 0" class="flex flex-wrap gap-3 mb-4">
       <Card class="flex-1 min-w-10rem">
@@ -943,19 +1198,36 @@ onMounted(async () => {
                   class="p-datatable-sm"
                   show-gridlines
                 >
+                  <Column header="النوع" style="width: 6rem">
+                    <template #body="{ data: pmt }">
+                      <Tag
+                        :value="pmt.payment_type === 'balance' ? 'رصيد' : 'نقدي'"
+                        :severity="pmt.payment_type === 'balance' ? 'info' : 'success'"
+                      />
+                    </template>
+                  </Column>
                   <Column field="date" header="التاريخ" />
                   <Column field="amount" header="المبلغ">
                     <template #body="{ data: pmt }">{{ formatAmount(pmt.amount) }}</template>
                   </Column>
                   <Column header="الحساب">
-                    <template #body="{ data: pmt }">{{ pmt.account?.name ?? '—' }}</template>
+                    <template #body="{ data: pmt }">
+                      <span v-if="pmt.payment_type === 'balance'">—</span>
+                      <span v-else>{{ pmt.account?.name ?? '—' }}</span>
+                    </template>
                   </Column>
                   <Column field="description" header="الوصف">
                     <template #body="{ data: pmt }">{{ pmt.description ?? '—' }}</template>
                   </Column>
                   <Column header="الإجراءات" style="width: 100px">
                     <template #body="{ data: pmt }">
-                      <Button icon="pi pi-pencil" text size="small" @click="openEditPayment(pmt)" />
+                      <Button
+                        v-if="pmt.payment_type === 'cash'"
+                        icon="pi pi-pencil"
+                        text
+                        size="small"
+                        @click="openEditPayment(pmt)"
+                      />
                       <Button
                         icon="pi pi-trash"
                         text
@@ -1083,7 +1355,7 @@ onMounted(async () => {
       v-model:visible="paymentDialogVisible"
       :header="paymentFormTitle"
       :modal="true"
-      :style="{ width: '420px' }"
+      :style="{ width: '100%', maxWidth: '520px', margin: '0 20px' }"
       @hide="paymentDialogVisible = false"
     >
       <PaymentForm
@@ -1093,37 +1365,171 @@ onMounted(async () => {
         :loading="purchasesStore.showLoading"
         :max-amount="isEditPayment ? undefined : remainingAmount"
         :is-edit="isEditPayment"
+        :allow-balance-split="!isEditPayment"
+        :customer-balance="supplier?.balance ?? 0"
+        balance-label="من رصيد المورد"
         @submit="onPaymentFormSubmit"
         @cancel="onPaymentFormCancel"
       />
     </Dialog>
 
-    <!-- Edit Opening Balance Dialog -->
+    <!-- Charge Balance Dialog -->
     <Dialog
-      v-model:visible="openingBalanceDialogVisible"
-      header="تعديل الرصيد الافتتاحي"
+      v-model:visible="chargeDialogVisible"
+      header="شحن رصيد المورد"
       :modal="true"
-      :style="{ width: '360px' }"
+      :style="{ width: '420px' }"
+      @hide="chargeDialogVisible = false"
     >
-      <div class="field flex flex-column gap-2 mt-2">
-        <label for="opening-balance-input">الرصيد الافتتاحي</label>
-        <InputNumber
-          id="opening-balance-input"
-          v-model="openingBalanceValue"
-          mode="decimal"
-          :minFractionDigits="2"
-          :maxFractionDigits="2"
-          class="w-full"
-          autofocus
-        />
-        <small class="text-color-secondary">
-          أدخل قيمة موجبة إذا كان المورد يطالبك بمستحقات (دائن)، أو قيمة سالبة إذا كان لديك رصيد مسبق لدى المورد (مدين).
-        </small>
+      <div v-if="chargeDialogVisible" class="flex flex-column gap-3">
+        <div class="field">
+          <label>المبلغ</label>
+          <InputNumber v-model="chargeForm.amount" :min="0.01" class="w-full mt-1" />
+        </div>
+        <div class="field">
+          <label>التاريخ</label>
+          <DatePicker
+            :model-value="chargeForm.date ? new Date(chargeForm.date + 'T12:00:00') : null"
+            date-format="yy-mm-dd"
+            show-icon
+            class="w-full mt-1"
+            @update:model-value="setChargeDate"
+          />
+        </div>
+        <div class="field">
+          <label>تسجيل صرف نقدي (اختياري)</label>
+          <Select
+            v-model="chargeForm.financial_account_id"
+            :options="[{ label: '— بدون —', value: null }, ...accountOptions]"
+            option-label="label"
+            option-value="value"
+            placeholder="حساب مالي"
+            class="w-full mt-1"
+          />
+        </div>
+        <div class="field">
+          <label>الوصف</label>
+          <Textarea v-model="chargeForm.description" class="w-full mt-1" rows="2" />
+        </div>
+        <div class="flex justify-content-end gap-2">
+          <Button label="إلغاء" text @click="chargeDialogVisible = false" />
+          <Button
+            label="شحن"
+            icon="pi pi-check"
+            :loading="store.loading"
+            :disabled="chargeForm.amount <= 0"
+            @click="onChargeSubmit"
+          />
+        </div>
       </div>
-      <template #footer>
-        <Button label="إلغاء" text @click="openingBalanceDialogVisible = false" />
-        <Button label="حفظ" icon="pi pi-check" :loading="updatingOpeningBalance" @click="saveOpeningBalance" />
-      </template>
+    </Dialog>
+
+    <!-- Withdraw Balance Dialog -->
+    <Dialog
+      v-model:visible="withdrawDialogVisible"
+      header="سحب رصيد المورد"
+      :modal="true"
+      :style="{ width: '420px' }"
+      @hide="withdrawDialogVisible = false"
+    >
+      <div v-if="withdrawDialogVisible" class="flex flex-column gap-3">
+        <div class="field">
+          <label>المبلغ</label>
+          <InputNumber
+            v-model="withdrawForm.amount"
+            :min="0.01"
+            class="w-full mt-1"
+          />
+        </div>
+        <div class="field">
+          <label>التاريخ</label>
+          <DatePicker
+            :model-value="withdrawForm.date ? new Date(withdrawForm.date + 'T12:00:00') : null"
+            date-format="yy-mm-dd"
+            show-icon
+            class="w-full mt-1"
+            @update:model-value="setWithdrawDate"
+          />
+        </div>
+        <div class="field">
+          <label>تسجيل إيراد نقدي (اختياري)</label>
+          <Select
+            v-model="withdrawForm.financial_account_id"
+            :options="[{ label: '— بدون —', value: null }, ...accountOptions]"
+            option-label="label"
+            option-value="value"
+            placeholder="حساب مالي"
+            class="w-full mt-1"
+          />
+        </div>
+        <div class="field">
+          <label>الوصف</label>
+          <Textarea v-model="withdrawForm.description" class="w-full mt-1" rows="2" />
+        </div>
+        <div class="flex justify-content-end gap-2">
+          <Button label="إلغاء" text @click="withdrawDialogVisible = false" />
+          <Button
+            label="سحب"
+            icon="pi pi-check"
+            :loading="store.loading"
+            :disabled="withdrawForm.amount <= 0"
+            @click="onWithdrawSubmit"
+          />
+        </div>
+      </div>
+    </Dialog>
+
+    <!-- Initial Balance Dialog -->
+    <Dialog
+      v-model:visible="initialBalanceDialogVisible"
+      header="الرصيد الافتتاحي للمورد"
+      :modal="true"
+      :style="{ width: '460px' }"
+      @hide="initialBalanceDialogVisible = false"
+    >
+      <div v-if="initialBalanceDialogVisible" class="flex flex-column gap-3">
+        <p class="text-color-secondary text-sm line-height-3 m-0">
+          يُسجَّل كبند افتتاحي في رصيد المورد فقط — دون حركة نقدية أو اختيار حساب بنكي/صندوق.
+          أدخل قيمة موجبة إذا كان لديك رصيد مسبق لدى المورد (مدين)، أو قيمة سالبة إذا كان المورد يطالبك بمستحقات (دائن).
+          أدخل <strong>0</strong> لإزالة الرصيد الافتتاحي إن وُجد.
+        </p>
+        <div class="field">
+          <label>المبلغ</label>
+          <InputNumber
+            v-model="initialBalanceForm.amount"
+            :min="-999999999"
+            :max="999999999"
+            :min-fraction-digits="0"
+            :max-fraction-digits="4"
+            class="w-full mt-1"
+          />
+        </div>
+        <div class="field">
+          <label>التاريخ</label>
+          <DatePicker
+            :model-value="
+              initialBalanceForm.date ? new Date(initialBalanceForm.date + 'T12:00:00') : null
+            "
+            date-format="yy-mm-dd"
+            show-icon
+            class="w-full mt-1"
+            @update:model-value="setInitialBalanceDate"
+          />
+        </div>
+        <div class="field">
+          <label>الوصف (اختياري)</label>
+          <Textarea v-model="initialBalanceForm.description" class="w-full mt-1" rows="2" />
+        </div>
+        <div class="flex justify-content-end gap-2 flex-wrap">
+          <Button label="إلغاء" text @click="initialBalanceDialogVisible = false" />
+          <Button
+            label="حفظ"
+            icon="pi pi-check"
+            :loading="store.loading"
+            @click="onInitialBalanceSubmit"
+          />
+        </div>
+      </div>
     </Dialog>
   </div>
 </template>

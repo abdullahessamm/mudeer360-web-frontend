@@ -7,12 +7,23 @@ import { useSuppliersStore } from '@/stores/suppliers'
 import { useDashboardStore } from '@/stores/dashboard'
 import SupplierForm from '@/components/forms/SupplierForm.vue'
 import type { Supplier } from '@/types'
+import { formatMoney } from '@/lib/format'
 
 const route = useRoute()
 const router = useRouter()
 const confirm = useConfirm()
 const store = useSuppliersStore()
 const dashboardStore = useDashboardStore()
+
+function formatBalance(n: number | undefined) {
+  const val = n ?? 0
+  if (val < -0.001) {
+    return `${formatMoney(Math.abs(val))} دائن`
+  } else if (val > 0.001) {
+    return `${formatMoney(val)} مدين`
+  }
+  return formatMoney(0)
+}
 
 watch(
   () => store.error,
@@ -142,6 +153,9 @@ onMounted(() => {
           class="p-datatable-sm"
         >
           <Column field="name" header="الاسم" sortable />
+          <Column header="الرصيد" style="width: 8rem">
+            <template #body="{ data }">{{ formatBalance(data.balance) }}</template>
+          </Column>
           <Column field="phone" header="الهاتف">
             <template #body="{ data }">{{ data.phone ?? '—' }}</template>
           </Column>

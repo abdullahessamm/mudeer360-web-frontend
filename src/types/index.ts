@@ -80,6 +80,7 @@ export interface Supplier {
   address: string | null
   notes: string | null
   opening_balance?: number
+  balance?: number
   created_at?: string
   updated_at?: string
 }
@@ -184,7 +185,7 @@ export interface PurchaseInvoice {
   status: 'paid' | 'partial' | 'unpaid'
   invoice_date: string
   items: PurchaseInvoiceItem[]
-  payments?: FinancialTransaction[]
+  payments?: InvoicePaymentLine[]
   created_at?: string
   updated_at?: string
 }
@@ -310,6 +311,7 @@ export type FinancialExpenseType =
   | 'payroll'
   | 'employee'
   | 'customer_balance'
+  | 'supplier_balance'
   | 'rent'
   | 'utilities'
   | 'supplies'
@@ -321,6 +323,7 @@ export type FinancialExpenseType =
 export type FinancialIncomeType =
   | 'sale_invoice'
   | 'customer_balance'
+  | 'supplier_balance'
   | 'retail'
   | 'services'
   | 'wholesale'
@@ -359,6 +362,19 @@ export interface CustomerBalanceTransaction {
   change_amount: number
   type: 'manual_charge' | 'manual_withdraw' | 'invoice_payment' | 'initial_balance'
   sale_invoice_id: number | null
+  invoice_number?: string | null
+  financial_transactions?: FinancialTransaction[]
+  description?: string | null
+  date: string
+  created_at?: string
+}
+
+/** GET /api/suppliers/{id}/balance-transactions */
+export interface SupplierBalanceTransaction {
+  id: number
+  change_amount: number
+  type: 'manual_charge' | 'manual_withdraw' | 'invoice_payment' | 'initial_balance'
+  purchase_invoice_id: number | null
   invoice_number?: string | null
   financial_transactions?: FinancialTransaction[]
   description?: string | null

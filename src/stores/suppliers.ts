@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient } from '@/api/axios'
 import { unwrapPayload, parsePaginatedResponse, getErrorMessage } from '@/api/utils'
-import type { Supplier, SupplierWithInvoices } from '@/types'
+import type { Supplier, SupplierWithInvoices, SupplierBalanceTransaction } from '@/types'
 import type { PaginatedPayload } from '@/types'
 
 export const useSuppliersStore = defineStore('suppliers', () => {
@@ -139,6 +139,99 @@ export const useSuppliersStore = defineStore('suppliers', () => {
     }
   }
 
+  async function chargeBalance(
+    id: number,
+    payload: {
+      amount: number
+      date: string
+      description?: string
+      financial_account_id?: number
+    },
+  ): Promise<Supplier> {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.post(`/api/suppliers/${id}/balance-charge`, payload)
+      const updated = unwrapPayload<Supplier>(data)
+      const idx = items.value.findIndex((s) => s.id === id)
+      if (idx !== -1) items.value[idx] = updated
+      const ai = allSuppliers.value.findIndex((s) => s.id === id)
+      if (ai !== -1) allSuppliers.value[ai] = updated
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل شحن الرصيد')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function withdrawBalance(
+    id: number,
+    payload: {
+      amount: number
+      date: string
+      description?: string
+      financial_account_id?: number
+    },
+  ): Promise<Supplier> {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.post(`/api/suppliers/${id}/balance-withdraw`, payload)
+      const updated = unwrapPayload<Supplier>(data)
+      const idx = items.value.findIndex((s) => s.id === id)
+      if (idx !== -1) items.value[idx] = updated
+      const ai = allSuppliers.value.findIndex((s) => s.id === id)
+      if (ai !== -1) allSuppliers.value[ai] = updated
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل سحب الرصيد')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /** Opening / initial balance ledger row only — no cashbook movement. Amount may be negative; 0 clears. */
+  async function setInitialBalance(
+    id: number,
+    payload: {
+      amount: number
+      date: string
+      description?: string | null
+    },
+  ): Promise<Supplier> {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.put(`/api/suppliers/${id}/initial-balance`, payload)
+      const updated = unwrapPayload<Supplier>(data)
+      const idx = items.value.findIndex((s) => s.id === id)
+      if (idx !== -1) items.value[idx] = updated
+      const ai = allSuppliers.value.findIndex((s) => s.id === id)
+      if (ai !== -1) allSuppliers.value[ai] = updated
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل حفظ الرصيد الافتتاحي')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function fetchBalanceTransactions(
+    id: number,
+    page = 1,
+    perPage = 15,
+    typeFilter?: string,
+  ): Promise<PaginatedPayload<SupplierBalanceTransaction>> {
+    const params: Record<string, string | number> = { page, per_page: perPage }
+    if (typeFilter) params.type = typeFilter
+    const { data } = await apiClient.get(`/api/suppliers/${id}/balance-transactions`, { params })
+    return parsePaginatedResponse<SupplierBalanceTransaction>(data)
+  }
+
   function clearError() {
     error.value = null
   }
@@ -159,6 +252,10 @@ export const useSuppliersStore = defineStore('suppliers', () => {
     create,
     update,
     remove,
+    chargeBalance,
+    withdrawBalance,
+    setInitialBalance,
+    fetchBalanceTransactions,
     clearError,
   }
 })

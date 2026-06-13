@@ -14,6 +14,7 @@ const props = defineProps<{
   allowBalanceSplit?: boolean
   /** Available customer balance for the sale payment. */
   customerBalance?: number
+  balanceLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -58,6 +59,8 @@ const datePickerValue = computed({
 const balanceApplyCap = computed(() =>
   props.allowBalanceSplit ? Math.max(0, props.customerBalance ?? 0) : 0,
 )
+
+const balanceLabelText = computed(() => props.balanceLabel ?? 'من رصيد العميل')
 
 const maxBalancePortion = computed(() => {
   if (!props.allowBalanceSplit || props.isEdit) return 0
@@ -163,7 +166,7 @@ function onCancel() {
 
     <template v-if="allowBalanceSplit && !isEdit">
       <div class="field">
-        <label for="pay-balance">من رصيد العميل</label>
+        <label for="pay-balance">{{ balanceLabelText }}</label>
         <InputNumber
           id="pay-balance"
           v-model="form.balance_amount"

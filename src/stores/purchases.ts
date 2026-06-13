@@ -7,15 +7,15 @@ import type {
   PurchaseInvoiceCreatePayload,
   PaymentPayload,
   PaginatedPayload,
+  InvoicePaymentLine,
 } from '@/types'
-import type { FinancialTransaction } from '@/types'
 
 const API_BASE = '/api/purchase-invoices'
 
 export const usePurchasesStore = defineStore('purchases', () => {
   const items = ref<PurchaseInvoice[]>([])
   const currentInvoice = ref<PurchaseInvoice | null>(null)
-  const payments = ref<FinancialTransaction[]>([])
+  const payments = ref<InvoicePaymentLine[]>([])
   const meta = ref<PaginatedPayload<PurchaseInvoice>['meta'] | null>(null)
   const indexLoading = ref(false)
   const showLoading = ref(false)
@@ -179,12 +179,12 @@ export const usePurchasesStore = defineStore('purchases', () => {
     }
   }
 
-  async function fetchPayments(id: number): Promise<FinancialTransaction[]> {
+  async function fetchPayments(id: number): Promise<InvoicePaymentLine[]> {
     showLoading.value = true
     error.value = null
     try {
       const { data } = await apiClient.get(`${API_BASE}/${id}/payments`)
-      const list = unwrapPayload<FinancialTransaction[]>(data)
+      const list = unwrapPayload<InvoicePaymentLine[]>(data)
       payments.value = Array.isArray(list) ? list : []
       return payments.value
     } catch (e: unknown) {
@@ -234,7 +234,31 @@ export const usePurchasesStore = defineStore('purchases', () => {
       const idx = items.value.findIndex((p) => p.id === invoiceId)
       if (idx !== -1) items.value[idx] = updated
       if (currentInvoice.value?.id === invoiceId) currentInvoice.value = updated
-      payments.value = payments.value.filter((p) => p.id !== transactionId)
+      payments.value = payments.value.filter((p) => p.id !== transactionId || p.payment_type !== 'cash')
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل حذف الدفعة')
+      throw e
+    } finally {
+      showLoading.value = false
+    }
+  }
+
+  async function deleteBalancePayment(
+    invoiceId: number,
+    transactionId: number
+  ): Promise<PurchaseInvoice> {
+    showLoading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.delete(
+        `${API_BASE}/${invoiceId}/balance-payments/${transactionId}`
+      )
+      const updated = unwrapPayload<PurchaseInvoice>(data)
+      const idx = items.value.findIndex((p) => p.id === invoiceId)
+      if (idx !== -1) items.value[idx] = updated
+      if (currentInvoice.value?.id === invoiceId) currentInvoice.value = updated
+      payments.value = payments.value.filter((p) => p.id !== transactionId || p.payment_type !== 'balance')
       return updated
     } catch (e: unknown) {
       error.value = getErrorMessage(e, 'فشل حذف الدفعة')
@@ -317,6 +341,7 @@ export const usePurchasesStore = defineStore('purchases', () => {
     fetchPayments,
     updatePayment,
     deletePayment,
+    deleteBalancePayment,
     clearError,
     clearCurrentInvoice,
   }
