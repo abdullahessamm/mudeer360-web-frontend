@@ -356,16 +356,15 @@ watch(
         <span class="font-bold text-xl text-green-600">{{ formatMoney(totalAmount) }}</span>
       </div>
     </div>
-      <div class="flex gap-2">
-        <Button type="button" label="إلغاء" text @click="onCancel" />
-        <Button
-          type="submit"
-          label="حفظ"
-          icon="pi pi-check"
-          :loading="loading"
-          :disabled="!canSubmit"
-        />
-      </div>
+    <div class="flex justify-content-end gap-2 mt-3">
+      <Button type="button" label="إلغاء" text @click="onCancel" />
+      <Button
+        type="submit"
+        label="حفظ"
+        icon="pi pi-check"
+        :loading="loading"
+        :disabled="!canSubmit"
+      />
     </div>
   </form>
 </template>
