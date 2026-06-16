@@ -41,6 +41,9 @@ const customerInput = ref<Customer | string | null>(null)
 const form = reactive({
   type: (props.modelValue?.type ?? 'credit') as 'cash' | 'credit',
   invoice_date: props.modelValue?.invoice_date ?? today,
+  discount_amount: (props.modelValue?.discount_amount ?? 0) as number,
+  discount_percentage: (props.modelValue?.discount_percentage ?? 0) as number,
+  tax_percentage: (props.modelValue?.tax_percentage ?? 0) as number,
 })
 
 const datePickerValue = computed({
@@ -63,6 +66,9 @@ watch(
       }
       form.type = (v.type ?? 'credit') as 'cash' | 'credit'
       form.invoice_date = v.invoice_date ?? today
+      form.discount_amount = v.discount_amount ?? 0
+      form.discount_percentage = v.discount_percentage ?? 0
+      form.tax_percentage = v.tax_percentage ?? 0
       if (v.items?.length) {
         rows.value = v.items.map((it: SaleInvoiceItem) => ({
           _rowId: ++rowIdCounter,
@@ -101,9 +107,24 @@ function onProductSelect(index: number, productId: number | null) {
   }
 }
 
-const totalAmount = computed(() =>
+const subtotalAmount = computed(() =>
   rows.value.reduce((sum, r) => sum + r.quantity * r.unit_price, 0),
 )
+
+const calculatedDiscountAmount = computed(() => {
+  if (form.discount_percentage > 0) {
+    return (subtotalAmount.value * form.discount_percentage) / 100
+  }
+  return form.discount_amount
+})
+
+const amountAfterDiscount = computed(() => subtotalAmount.value - calculatedDiscountAmount.value)
+
+const calculatedTaxAmount = computed(() => {
+  return (amountAfterDiscount.value * form.tax_percentage) / 100
+})
+
+const totalAmount = computed(() => amountAfterDiscount.value + calculatedTaxAmount.value)
 
 const validItems = computed(() => {
   return rows.value
@@ -143,6 +164,9 @@ async function onSubmit() {
     customer_id: customerId,
     type: form.type,
     invoice_date: form.invoice_date,
+    discount_amount: form.discount_amount > 0 ? form.discount_amount : undefined,
+    discount_percentage: form.discount_percentage > 0 ? form.discount_percentage : undefined,
+    tax_percentage: form.tax_percentage > 0 ? form.tax_percentage : undefined,
     items: validItems.value,
   })
 }
@@ -204,6 +228,52 @@ watch(
         icon-display="input"
         class="w-full mt-1"
       />
+    </div>
+    <div class="grid gap-3">
+      <div class="col-12 md:col-6">
+        <div class="field">
+          <label for="si-discount-percentage">نسبة الخصم (%) </label>
+          <InputNumber
+            id="si-discount-percentage"
+            v-model="form.discount_percentage"
+            :min="0"
+            :max="100"
+            :min-fraction-digits="0"
+            :max-fraction-digits="2"
+            class="w-full mt-1"
+          />
+        </div>
+      </div>
+      <div class="col-12 md:col-6">
+        <div class="field">
+          <label for="si-discount-amount">المبلغ الثابت للخصم</label>
+          <InputNumber
+            id="si-discount-amount"
+            v-model="form.discount_amount"
+            :min="0"
+            :min-fraction-digits="0"
+            :max-fraction-digits="2"
+            class="w-full mt-1"
+            :disabled="form.discount_percentage > 0"
+          />
+          <small v-if="form.discount_percentage > 0" class="text-color-secondary block mt-1">
+            يتم تجاهل هذا المبلغ عند تفعيل نسبة الخصم
+          </small>
+        </div>
+      </div>
+      <div class="col-12 md:col-6">
+        <div class="field">
+          <label for="si-tax-percentage">نسبة الضريبة (%) </label>
+          <InputNumber
+            id="si-tax-percentage"
+            v-model="form.tax_percentage"
+            :min="0"
+            :min-fraction-digits="0"
+            :max-fraction-digits="2"
+            class="w-full mt-1"
+          />
+        </div>
+      </div>
     </div>
     <div class="field">
       <div class="flex justify-content-between align-items-center mb-2">
@@ -267,10 +337,25 @@ watch(
         >يجب إضافة صنف واحد على الأقل بكمية وسعر صحيحين</small
       >
     </div>
-    <div class="flex justify-content-between align-items-center mt-2">
-      <span class="font-semibold"
-        >الإجمالي: {{formatMoney(totalAmount) }}</span
-      >
+    <div class="flex flex-column gap-2 mt-3 p-3 border-round" style="background-color: var(--surface-50)">
+      <div class="flex justify-content-between">
+        <span>الإجمالي الجزئي:</span>
+        <span class="font-semibold">{{ formatMoney(subtotalAmount) }}</span>
+      </div>
+      <div v-if="calculatedDiscountAmount > 0" class="flex justify-content-between text-orange-600">
+        <span>الخصم:</span>
+        <span class="font-semibold">- {{ formatMoney(calculatedDiscountAmount) }}</span>
+      </div>
+      <div v-if="calculatedTaxAmount > 0" class="flex justify-content-between text-blue-600">
+        <span>الضريبة:</span>
+        <span class="font-semibold">+ {{ formatMoney(calculatedTaxAmount) }}</span>
+      </div>
+      <Divider />
+      <div class="flex justify-content-between">
+        <span class="font-bold">الإجمالي النهائي:</span>
+        <span class="font-bold text-xl text-green-600">{{ formatMoney(totalAmount) }}</span>
+      </div>
+    </div>
       <div class="flex gap-2">
         <Button type="button" label="إلغاء" text @click="onCancel" />
         <Button

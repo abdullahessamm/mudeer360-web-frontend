@@ -804,8 +804,22 @@ onMounted(async () => {
         </div>
         <div class="flex gap-4">
           <div>
-            <span class="text-color-secondary">الإجمالي:</span>
-            {{ formatMoney(store.currentInvoice.total_amount) }}
+            <span class="text-color-secondary">الإجمالي الجزئي:</span>
+            {{ formatMoney(store.currentInvoice.subtotal_amount) }}
+          </div>
+          <div v-if="store.currentInvoice.discount_amount > 0 || store.currentInvoice.discount_percentage > 0">
+            <span class="text-color-secondary">الخصم:</span>
+            <span class="text-orange-600">- {{ formatMoney(store.currentInvoice.discount_amount) }}</span>
+            <span v-if="store.currentInvoice.discount_percentage > 0" class="text-sm text-color-secondary">({{ store.currentInvoice.discount_percentage }}%)</span>
+          </div>
+          <div v-if="store.currentInvoice.tax_percentage > 0">
+            <span class="text-color-secondary">الضريبة:</span>
+            <span class="text-blue-600">+ {{ formatMoney(store.currentInvoice.tax_amount) }}</span>
+            <span class="text-sm text-color-secondary">({{ store.currentInvoice.tax_percentage }}%)</span>
+          </div>
+          <div>
+            <span class="text-color-secondary font-bold">الإجمالي:</span>
+            <span class="text-green-600 font-bold">{{ formatMoney(store.currentInvoice.total_amount) }}</span>
           </div>
           <div>
             <span class="text-color-secondary">المدفوع:</span>
@@ -1080,7 +1094,17 @@ onMounted(async () => {
 
           <footer class="invoice-print-totals">
             <p class="m-0">
-              <strong>الإجمالي:</strong> {{ formatAmount(store.currentInvoice.total_amount) }}
+              <strong>الإجمالي الجزئي:</strong> {{ formatAmount(store.currentInvoice.subtotal_amount) }}
+            </p>
+            <p v-if="store.currentInvoice.discount_amount > 0 || store.currentInvoice.discount_percentage > 0" class="m-0">
+              <strong>الخصم:</strong> - {{ formatAmount(store.currentInvoice.discount_amount) }}
+              <span v-if="store.currentInvoice.discount_percentage > 0">({{ store.currentInvoice.discount_percentage }}%)</span>
+            </p>
+            <p v-if="store.currentInvoice.tax_percentage > 0" class="m-0">
+              <strong>الضريبة:</strong> + {{ formatAmount(store.currentInvoice.tax_amount) }} ({{ store.currentInvoice.tax_percentage }}%)
+            </p>
+            <p class="m-0" style="border-top: 1px solid #ccc; padding-top: 8px; margin-top: 8px;">
+              <strong style="font-size: 1.2em;">الإجمالي:</strong> <strong style="font-size: 1.2em;">{{ formatAmount(store.currentInvoice.total_amount) }}</strong>
             </p>
             <p class="m-0">
               <strong>المدفوع:</strong> {{ formatAmount(store.currentInvoice.paid_amount) }}

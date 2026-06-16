@@ -141,6 +141,11 @@ export interface SaleInvoice {
   customer?: Customer | null
   invoice_number: string
   type: 'cash' | 'credit'
+  subtotal_amount: number
+  discount_amount: number
+  discount_percentage: number
+  tax_amount: number
+  tax_percentage: number
   total_amount: number
   paid_amount: number
   status: 'paid' | 'partial' | 'unpaid'
@@ -156,6 +161,9 @@ export interface SaleInvoiceCreatePayload {
   customer_id?: number
   type: 'cash' | 'credit'
   invoice_date: string
+  discount_amount?: number
+  discount_percentage?: number
+  tax_percentage?: number
   items: { product_id: number; quantity: number; unit_price: number }[]
 }
 
