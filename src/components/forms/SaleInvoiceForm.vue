@@ -241,6 +241,7 @@ watch(
             :min-fraction-digits="0"
             :max-fraction-digits="2"
             class="w-full mt-1"
+            fluid
           />
         </div>
       </div>
@@ -255,6 +256,7 @@ watch(
             :max-fraction-digits="2"
             class="w-full mt-1"
             :disabled="form.discount_percentage > 0"
+            fluid
           />
           <small v-if="form.discount_percentage > 0" class="text-color-secondary block mt-1">
             يتم تجاهل هذا المبلغ عند تفعيل نسبة الخصم
@@ -271,6 +273,7 @@ watch(
             :min-fraction-digits="0"
             :max-fraction-digits="2"
             class="w-full mt-1"
+            fluid
           />
         </div>
       </div>
