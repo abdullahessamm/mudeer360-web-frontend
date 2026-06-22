@@ -10,6 +10,7 @@ import {
   DISPENSE_STATUS_LABELS,
   DISPENSE_STATUS_SEVERITY,
   isDispenseStockInsufficient,
+  DISPENSE_STATUS_ICONS,
 } from '@/lib/dispense'
 import { showError, showSuccess } from '@/composables/useToast'
 import { exportAccountStatement } from '@/composables/useExportAccountStatement'
@@ -209,6 +210,23 @@ const statusLabel = (status: string) => {
   }
   return map[status] ?? status
 }
+
+const statusSeverity = (status: string) =>
+  ({ paid: 'success', partial: 'warn', unpaid: 'danger' })[status] ?? 'secondary'
+
+const undispensedCount = computed(() => {
+  const items = selectedInvoice.value?.items ?? []
+  return items.filter((i) => !i.is_dispensed).length
+})
+
+const hasUndispensedItems = computed(() => undispensedCount.value > 0)
+
+const dispensedCount = computed(() => {
+  const items = selectedInvoice.value?.items ?? []
+  return items.filter((i) => i.is_dispensed).length
+})
+
+const hasDispensedItems = computed(() => dispensedCount.value > 0)
 
 const typeLabel = (type: string) => {
   const map: Record<string, string> = {
@@ -434,6 +452,50 @@ function setLineDeductStock(lineId: number, v: boolean) {
   deductStockByLineId.value = { ...deductStockByLineId.value, [lineId]: v }
 }
 
+async function onDispenseAll() {
+  if (!selectedInvoice.value) return
+  try {
+    const pending = selectedInvoice.value.items?.filter((i) => !i.is_dispensed && i.id) ?? []
+    if (pending.length === 0) return
+    await salesStore.dispense(selectedInvoice.value.id, {
+      dispenseItems: pending.map((i) => ({
+        id: i.id!,
+        deduct_stock: lineWantsDeductStock(i.id),
+      })),
+    })
+    showSuccess('تم صرف الأصناف بنجاح')
+    await refetchCustomer()
+    if (selectedInvoice.value) {
+      const updated = customer.value?.invoices?.find((i) => i.id === selectedInvoice.value!.id)
+      if (updated) {
+        selectedInvoice.value = { ...updated, payments: selectedInvoice.value.payments }
+      }
+    }
+  } catch {
+    // error via toast
+  }
+}
+
+async function onUndispenseAll() {
+  if (!selectedInvoice.value) return
+  try {
+    const dispensedIds =
+      selectedInvoice.value.items?.filter((i) => i.is_dispensed && i.id).map((i) => i.id!) ?? []
+    if (dispensedIds.length === 0) return
+    await salesStore.undispense(selectedInvoice.value.id, dispensedIds)
+    showSuccess('تم تراجع صرف الأصناف بنجاح')
+    await refetchCustomer()
+    if (selectedInvoice.value) {
+      const updated = customer.value?.invoices?.find((i) => i.id === selectedInvoice.value!.id)
+      if (updated) {
+        selectedInvoice.value = { ...updated, payments: selectedInvoice.value.payments }
+      }
+    }
+  } catch {
+    // error via toast
+  }
+}
+
 async function onDispenseItem(invoice: SaleInvoice, item: { id?: number }) {
   if (!item.id) return
   dispensingItemId.value = item.id
@@ -445,7 +507,9 @@ async function onDispenseItem(invoice: SaleInvoice, item: { id?: number }) {
     await refetchCustomer()
     if (selectedInvoice.value?.id === invoice.id) {
       const updated = customer.value?.invoices?.find((i) => i.id === invoice.id)
-      if (updated) selectedInvoice.value = updated
+      if (updated) {
+        selectedInvoice.value = { ...updated, payments: selectedInvoice.value.payments }
+      }
     }
   } catch {
     // error via toast
@@ -463,7 +527,9 @@ async function onUndispenseItem(invoice: SaleInvoice, item: { id?: number }) {
     await refetchCustomer()
     if (selectedInvoice.value?.id === invoice.id) {
       const updated = customer.value?.invoices?.find((i) => i.id === invoice.id)
-      if (updated) selectedInvoice.value = updated
+      if (updated) {
+        selectedInvoice.value = { ...updated, payments: selectedInvoice.value.payments }
+      }
     }
   } catch {
     // error via toast
@@ -1013,16 +1079,27 @@ onMounted(async () => {
         />
         <Dialog
           v-model:visible="detailsDialogVisible"
-          :header="
-            selectedInvoice ? `تفاصيل فاتورة ${selectedInvoice.invoice_number}` : 'تفاصيل الفاتورة'
-          "
           class="invoice-details-dialog"
           :modal="true"
           :style="{ width: '100%', maxWidth: '800px', margin: '0 20px' }"
           @hide="closeDetailsDialog"
         >
-          <div v-if="salesStore.showLoading" class="flex justify-content-center py-6">
-            <i class="pi pi-spin pi-spinner text-3xl text-color-secondary"></i>
+          <template #header>
+            <div class="flex align-items-center gap-2">
+              <b
+                >فاتورة
+                {{ selectedInvoice?.invoice_number ?? '...' }}</b
+              >
+              <Tag
+                v-if="selectedInvoice"
+                :value="typeLabel(selectedInvoice.type)"
+                severity="warn"
+              />
+            </div>
+          </template>
+
+          <div v-if="salesStore.showLoading && !selectedInvoice" class="flex justify-content-center py-6">
+            <i class="pi pi-spin pi-spinner text-4xl text-color-secondary"></i>
           </div>
           <div
             v-else-if="selectedInvoice"
@@ -1051,211 +1128,261 @@ onMounted(async () => {
               />
             </div>
             <div class="invoice-screen flex flex-column gap-4">
-            <div class="flex flex-wrap gap-2 mb-2">
-              <Tag
-                severity="info"
-                :value="`الإجمالي: ${formatAmount(selectedInvoice.total_amount)}`"
-              />
-              <Tag
-                severity="success"
-                :value="`المدفوع: ${formatAmount(selectedInvoice.paid_amount)}`"
-              />
-              <Tag
-                :severity="
-                  selectedInvoice.total_amount - selectedInvoice.paid_amount > 0
-                    ? 'warn'
-                    : 'secondary'
-                "
-                :value="`المتبقي: ${formatAmount(Math.max(0, selectedInvoice.total_amount - selectedInvoice.paid_amount))}`"
-              />
-            </div>
-            <div class="flex flex-wrap gap-4 align-items-center">
-              <div>
-                <span class="text-color-secondary">حالة الصرف:</span>
+              <div class="flex flex-wrap align-items-center gap-4">
                 <Tag
-                  :value="DISPENSE_STATUS_LABELS[getDispenseStats(selectedInvoice.items).status]"
-                  :severity="
-                    DISPENSE_STATUS_SEVERITY[getDispenseStats(selectedInvoice.items).status]
-                  "
+                  :value="`التاريخ: ${selectedInvoice.invoice_date ?? '—'}`"
+                  severity="success"
+                />
+                <Tag :value="`العميل: ${selectedInvoice.customer?.name ?? customer?.name ?? '—'}`" severity="info" />
+                <Tag
+                  :value="`الحالة: ${statusLabel(selectedInvoice.status)}`"
+                  :severity="statusSeverity(selectedInvoice.status)"
                 />
               </div>
-              <div>
-                <span class="text-color-secondary">تم الصرف:</span>
-                {{ formatAmount(getDispenseStats(selectedInvoice.items).dispensedAmount) }}
+              <Divider class="my-1" />
+              <div class="flex flex-column gap-2">
+                <h4 class="my-0 py-0">قيمة الفاتورة</h4>
+                <div class="flex gap-4">
+                  <Tag
+                    v-if="
+                      selectedInvoice.subtotal_amount && (selectedInvoice.discount_amount > 0 || selectedInvoice.tax_amount > 0)
+                    "
+                    :value="`الإجمالى الفرعي: ${formatAmount(selectedInvoice.subtotal_amount)}`"
+                    severity="success"
+                  />
+                  <Tag
+                    v-if="
+                      selectedInvoice.discount_amount && selectedInvoice.discount_amount > 0
+                    "
+                    :value="`الخصم: ${formatAmount(selectedInvoice.discount_amount)}`"
+                    severity="danger"
+                  />
+                  <Tag
+                    v-if="selectedInvoice.tax_amount && selectedInvoice.tax_amount > 0"
+                    :value="`الضريبة: ${formatAmount(selectedInvoice.tax_amount)} (${selectedInvoice.tax_percentage}%)`"
+                    severity="info"
+                  />
+                  <Tag
+                    :value="`الإجمالي: ${formatAmount(selectedInvoice.total_amount)}`"
+                    severity="success"
+                  />
+                </div>
               </div>
-              <div>
-                <span class="text-color-secondary">متبقي الصرف:</span>
-                {{ formatAmount(getDispenseStats(selectedInvoice.items).remainingAmount) }}
-              </div>
-            </div>
-            <div class="flex gap-2 flex-wrap">
-              <Button
-                v-if="selectedInvoice.status === 'unpaid'"
-                label="تعديل"
-                icon="pi pi-pencil"
-                size="small"
-                @click="openEditInvoice(selectedInvoice)"
-              />
-              <Button
-                v-if="selectedInvoice.status === 'unpaid'"
-                label="حذف"
-                icon="pi pi-trash"
-                severity="danger"
-                size="small"
-                @click="confirmDeleteInvoice(selectedInvoice)"
-              />
-              <Button
-                v-if="selectedInvoice.status === 'unpaid' || selectedInvoice.status === 'partial'"
-                label="إضافة دفعة"
-                icon="pi pi-plus"
-                size="small"
-                @click="openAddPayment"
-              />
-            </div>
-            <div v-if="selectedInvoice.items?.length" class="invoice-details">
-              <h4 class="mt-0 mb-2 text-base">الأصناف</h4>
-              <DataTable
-                :value="selectedInvoice.items"
-                size="small"
-                class="p-datatable-sm"
-                show-gridlines
-              >
-                <Column field="product_name" header="المنتج">
-                  <template #body="{ data: item }">
-                    <div class="flex flex-column gap-1 align-items-start">
-                      <span>{{ item.product?.name ?? item.product_name ?? '—' }}</span>
-                      <div class="flex flex-wrap gap-1 align-items-center">
-                        <Tag v-if="item.is_dispensed" value="تم الصرف" severity="success" />
-                        <Tag
-                          v-if="item.is_dispensed && item.stock_deducted === true"
-                          value="من المخزون"
-                          severity="info"
-                        />
-                        <Tag
-                          v-else-if="item.is_dispensed && item.stock_deducted === false"
-                          value="دون خصم مخزون"
-                          severity="secondary"
-                        />
-                        <Tag
-                          v-if="
-                            !item.is_dispensed &&
-                            item.id &&
-                            isDispenseStockInsufficient(item, lineWantsDeductStock(item.id))
-                          "
-                          value="مخزون غير كافٍ"
-                          severity="warn"
-                        />
-                      </div>
-                    </div>
-                  </template>
-                </Column>
-                <Column field="quantity" header="الكمية" />
-                <Column field="unit_price" header="سعر الوحدة">
-                  <template #body="{ data: item }">{{ formatAmount(item.unit_price) }}</template>
-                </Column>
-                <Column field="total_price" header="المجموع">
-                  <template #body="{ data: item }">{{
-                    formatAmount(item.total_price ?? item.quantity * item.unit_price)
-                  }}</template>
-                </Column>
-                <Column header="خصم من المخزون" style="width: 7rem">
-                  <template #body="{ data: item }">
-                    <div v-if="!item.is_dispensed && item.id" class="flex align-items-center gap-2">
-                      <Checkbox
-                        v-if="item.product_id"
-                        :model-value="lineWantsDeductStock(item.id)"
-                        :binary="true"
-                        :input-id="`cust-deduct-${item.id}`"
-                        @update:model-value="(v: boolean) => setLineDeductStock(item.id, v)"
-                      />
-                      <span v-else class="text-color-secondary text-sm">—</span>
-                    </div>
-                    <span v-else class="text-color-secondary">—</span>
-                  </template>
-                </Column>
-                <Column header="الإجراءات" style="width: 140px">
-                  <template #body="{ data: item }">
-                    <Button
-                      v-if="!item.is_dispensed && item.id"
-                      label="صرف"
-                      icon="pi pi-box"
-                      text
-                      size="small"
-                      severity="secondary"
-                      :loading="dispensingItemId === item.id"
-                      @click="onDispenseItem(selectedInvoice, item)"
-                    />
-                    <Button
-                      v-else-if="item.is_dispensed && item.id"
-                      label="تراجع"
-                      icon="pi pi-undo"
-                      text
-                      size="small"
-                      severity="warn"
-                      :loading="dispensingItemId === item.id"
-                      @click="onUndispenseItem(selectedInvoice, item)"
-                    />
-                  </template>
-                </Column>
-              </DataTable>
-            </div>
-            <div class="invoice-details">
-              <h4 class="mt-0 mb-2 text-base">الدفعات</h4>
-              <DataTable
-                v-if="selectedInvoice.payments?.length"
-                :value="selectedInvoice.payments"
-                size="small"
-                class="p-datatable-sm"
-                show-gridlines
-              >
-                <Column header="النوع" style="width: 6rem">
-                  <template #body="{ data: pmt }">
+              <Divider class="my-1" />
+              <div class="flex flex-column gap-2">
+                <div class="flex align-items-center justify-content-between">
+                  <h4>الصرف</h4>
+                  <Button
+                    v-if="hasUndispensedItems"
+                    label="صرف كل الأصناف"
+                    icon="pi pi-box"
+                    size="small"
+                    severity="secondary"
+                    :loading="salesStore.showLoading"
+                    @click="onDispenseAll"
+                  />
+                  <Button
+                    v-if="hasDispensedItems"
+                    label="تراجع الصرف"
+                    icon="pi pi-undo"
+                    size="small"
+                    severity="secondary"
+                    outlined
+                    :loading="salesStore.showLoading"
+                    @click="onUndispenseAll"
+                  />
+                </div>
+                <div class="flex flex-wrap gap-4 align-items-center">
+                  <div>
                     <Tag
-                      :value="pmt.payment_type === 'balance' ? 'رصيد' : 'نقدي'"
-                      :severity="pmt.payment_type === 'balance' ? 'info' : 'success'"
+                      :value="`${DISPENSE_STATUS_LABELS[getDispenseStats(selectedInvoice.items).status]}`"
+                      :icon="DISPENSE_STATUS_ICONS[getDispenseStats(selectedInvoice.items).status]"
+                      :severity="
+                        DISPENSE_STATUS_SEVERITY[getDispenseStats(selectedInvoice.items).status]
+                      "
                     />
-                  </template>
-                </Column>
-                <Column field="date" header="التاريخ" />
-                <Column field="amount" header="المبلغ">
-                  <template #body="{ data: pmt }">{{ formatAmount(pmt.amount) }}</template>
-                </Column>
-                <Column header="الحساب">
-                  <template #body="{ data: pmt }">
-                    <span v-if="pmt.payment_type === 'balance'">—</span>
-                    <span v-else>{{ pmt.account?.name ?? '—' }}</span>
-                  </template>
-                </Column>
-                <Column field="description" header="الوصف">
-                  <template #body="{ data: pmt }">{{ pmt.description ?? '—' }}</template>
-                </Column>
-                <Column header="الإجراءات" style="width: 100px">
-                  <template #body="{ data: pmt }">
-                    <Button
-                      v-if="pmt.payment_type === 'cash'"
-                      icon="pi pi-pencil"
-                      text
-                      size="small"
-                      @click="openEditPayment(pmt)"
+                  </div>
+                  <div>
+                    <Tag
+                      v-if="getDispenseStats(selectedInvoice.items).status === 'partial'"
+                      :value="`تم الصرف: ${formatAmount(getDispenseStats(selectedInvoice.items, selectedInvoice).dispensedAmount)}`"
+                      severity="success"
                     />
-                    <Button
-                      icon="pi pi-trash"
-                      text
-                      size="small"
-                      severity="danger"
-                      @click="confirmDeletePayment(pmt)"
+                  </div>
+                  <div>
+                    <Tag
+                      v-if="getDispenseStats(selectedInvoice.items).status === 'partial'"
+                      :value="`متبقي الصرف: ${formatAmount(getDispenseStats(selectedInvoice.items, selectedInvoice).remainingAmount)}`"
+                      severity="warn"
                     />
-                  </template>
-                </Column>
-              </DataTable>
-              <p v-else class="text-color-secondary m-0">لا توجد دفعات</p>
-            </div>
-            <div
-              v-if="!(selectedInvoice.items?.length || selectedInvoice.payments?.length)"
-              class="text-color-secondary text-sm"
-            >
-              لا توجد تفاصيل إضافية
-            </div>
+                  </div>
+                </div>
+              </div>
+              <Divider class="my-1" />
+              <div class="flex flex-column gap-2">
+                <h4 class="mt-0 mb-2">الأصناف</h4>
+                <DataTable :value="selectedInvoice.items" size="small" class="p-datatable-sm">
+                  <Column field="product_name" header="المنتج">
+                    <template #body="{ data: item }">
+                      <div class="flex flex-column gap-1 align-items-start">
+                        <span>{{ item.product?.name ?? item.product_name ?? '—' }}</span>
+                        <div class="flex flex-wrap gap-1 align-items-center">
+                          <Tag v-if="item.is_dispensed" value="تم الصرف" severity="success" />
+                          <Tag
+                            v-if="item.is_dispensed && item.stock_deducted === true"
+                            value="من المخزون"
+                            severity="info"
+                          />
+                          <Tag
+                            v-else-if="item.is_dispensed && item.stock_deducted === false"
+                            value="دون خصم مخزون"
+                            severity="secondary"
+                          />
+                          <Tag
+                            v-if="
+                              !item.is_dispensed &&
+                              item.id &&
+                              isDispenseStockInsufficient(item, lineWantsDeductStock(item.id))
+                            "
+                            value="مخزون غير كافٍ"
+                            severity="warn"
+                          />
+                        </div>
+                      </div>
+                    </template>
+                  </Column>
+                  <Column field="quantity" header="الكمية" />
+                  <Column field="unit_price" header="سعر الوحدة">
+                    <template #body="{ data: item }">{{ formatAmount(item.unit_price) }}</template>
+                  </Column>
+                  <Column field="total_price" header="المجموع">
+                    <template #body="{ data: item }">{{
+                      formatAmount(item.total_price ?? item.quantity * item.unit_price)
+                    }}</template>
+                  </Column>
+                  <Column header="خصم من المخزون" style="width: 7rem">
+                    <template #body="{ data: item }">
+                      <div v-if="!item.is_dispensed && item.id" class="flex align-items-center gap-2">
+                        <Checkbox
+                          v-if="item.product_id"
+                          :model-value="lineWantsDeductStock(item.id)"
+                          :binary="true"
+                          :input-id="`cust-deduct-${item.id}`"
+                          @update:model-value="(v: boolean) => setLineDeductStock(item.id, v)"
+                        />
+                        <span v-else class="text-color-secondary text-sm">—</span>
+                      </div>
+                      <span v-else class="text-color-secondary">—</span>
+                    </template>
+                  </Column>
+                  <Column header="الإجراءات" style="width: 140px">
+                    <template #body="{ data: item }">
+                      <Button
+                        v-if="!item.is_dispensed && item.id"
+                        label="صرف"
+                        icon="pi pi-box"
+                        text
+                        size="small"
+                        severity="secondary"
+                        :loading="dispensingItemId === item.id"
+                        @click="onDispenseItem(selectedInvoice, item)"
+                      />
+                      <Button
+                        v-else-if="item.is_dispensed && item.id"
+                        label="تراجع"
+                        icon="pi pi-undo"
+                        text
+                        size="small"
+                        severity="warn"
+                        :loading="dispensingItemId === item.id"
+                        @click="onUndispenseItem(selectedInvoice, item)"
+                      />
+                    </template>
+                  </Column>
+                </DataTable>
+              </div>
+              <div class="flex flex-column gap-2">
+                <div class="flex justify-content-between align-items-center">
+                  <h4 class="mt-0 mb-2">الدفعات</h4>
+                  <Button
+                    v-if="selectedInvoice.status === 'partial'"
+                    label="إضافة دفعة"
+                    icon="pi pi-plus"
+                    size="small"
+                    @click="openAddPayment"
+                  />
+                </div>
+                <div class="flex align-items-center gap-2">
+                  <Tag
+                    :value="`مدفوع: ${formatAmount(selectedInvoice.paid_amount)}`"
+                    severity="success"
+                    icon="pi pi-check-circle"
+                  />
+                  <Tag
+                    v-if="selectedInvoice.status !== 'paid'"
+                    :value="`متبقى: ${formatAmount(selectedInvoice.total_amount - selectedInvoice.paid_amount)}`"
+                    severity="warn"
+                    icon="pi pi-info-circle"
+                  />
+                </div>
+                <DataTable
+                  v-if="selectedInvoice.payments?.length"
+                  :value="selectedInvoice.payments"
+                  size="small"
+                  class="p-datatable-sm"
+                >
+                  <Column header="النوع" style="width: 7rem">
+                    <template #body="{ data: pmt }">
+                      <Tag
+                        :value="pmt.payment_type === 'balance' ? 'رصيد' : 'نقدي'"
+                        :severity="pmt.payment_type === 'balance' ? 'info' : 'success'"
+                      />
+                    </template>
+                  </Column>
+                  <Column field="date" header="التاريخ" />
+                  <Column field="amount" header="المبلغ">
+                    <template #body="{ data: pmt }">{{ formatAmount(pmt.amount) }}</template>
+                  </Column>
+                  <Column header="الحساب">
+                    <template #body="{ data: pmt }">
+                      <span v-if="pmt.payment_type === 'balance'">—</span>
+                      <span v-else>{{ pmt.account?.name ?? '—' }}</span>
+                    </template>
+                  </Column>
+                  <Column field="description" header="الوصف">
+                    <template #body="{ data: pmt }">{{ pmt.description ?? '—' }}</template>
+                  </Column>
+                  <Column header="الإجراءات" style="width: 120px">
+                    <template #body="{ data: pmt }">
+                      <Button
+                        v-if="pmt.payment_type === 'cash'"
+                        icon="pi pi-pencil"
+                        text
+                        size="small"
+                        @click="openEditPayment(pmt)"
+                      />
+                      <Button
+                        icon="pi pi-trash"
+                        text
+                        size="small"
+                        severity="danger"
+                        @click="confirmDeletePayment(pmt)"
+                      />
+                    </template>
+                  </Column>
+                </DataTable>
+                <div v-else class="flex flex-column justify-content-center align-items-center gap-2">
+                  <p class="text-color-secondary m-0">لا توجد دفعات</p>
+                  <Button
+                    v-if="selectedInvoice.status === 'unpaid'"
+                    outlined
+                    label="إضافة دفعة"
+                    icon="pi pi-plus"
+                    size="small"
+                    @click="openAddPayment"
+                  />
+                </div>
+              </div>
             </div>
 
             <div class="invoice-print-layout print-only">
@@ -1303,7 +1430,7 @@ onMounted(async () => {
 
               <section class="invoice-print-section">
                 <h4 class="invoice-print-h4">الدفعات</h4>
-                <table v-if="salesStore.payments.length" class="invoice-print-table">
+                <table v-if="selectedInvoice.payments?.length" class="invoice-print-table">
                   <thead>
                     <tr>
                       <th>التاريخ</th>
@@ -1311,7 +1438,7 @@ onMounted(async () => {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="(pmt, idx) in salesStore.payments" :key="pmt.id ?? idx">
+                    <tr v-for="(pmt, idx) in selectedInvoice.payments" :key="pmt.id ?? idx">
                       <td>{{ pmt.date }}</td>
                       <td>{{ formatAmount(pmt.amount) }}</td>
                     </tr>
@@ -1322,7 +1449,31 @@ onMounted(async () => {
 
               <footer class="invoice-print-totals">
                 <p class="m-0">
-                  <strong>الإجمالي:</strong> {{ formatAmount(selectedInvoice.total_amount) }}
+                  <strong>الإجمالي الجزئي:</strong>
+                  {{ formatAmount(selectedInvoice.subtotal_amount) }}
+                </p>
+                <p
+                  v-if="
+                    selectedInvoice.discount_amount > 0 ||
+                    selectedInvoice.discount_percentage > 0
+                  "
+                  class="m-0"
+                >
+                  <strong>الخصم:</strong> - {{ formatAmount(selectedInvoice.discount_amount) }}
+                  <span v-if="selectedInvoice.discount_percentage > 0"
+                    >({{ selectedInvoice.discount_percentage }}%)</span
+                  >
+                </p>
+                <p v-if="selectedInvoice.tax_percentage > 0" class="m-0">
+                  <strong>الضريبة:</strong> + {{ formatAmount(selectedInvoice.tax_amount) }} ({{
+                    selectedInvoice.tax_percentage
+                  }}%)
+                </p>
+                <p class="m-0" style="border-top: 1px solid #ccc; padding-top: 8px; margin-top: 8px">
+                  <strong style="font-size: 1.2em">الإجمالي:</strong>
+                  <strong style="font-size: 1.2em">{{
+                    formatAmount(selectedInvoice.total_amount)
+                  }}</strong>
                 </p>
                 <p class="m-0">
                   <strong>المدفوع:</strong> {{ formatAmount(selectedInvoice.paid_amount) }}
@@ -1331,10 +1482,7 @@ onMounted(async () => {
                   <strong>المتبقي:</strong>
                   {{
                     formatAmount(
-                      Math.max(
-                        0,
-                        selectedInvoice.total_amount - selectedInvoice.paid_amount,
-                      ),
+                      Math.max(0, selectedInvoice.total_amount - selectedInvoice.paid_amount),
                     )
                   }}
                 </p>
