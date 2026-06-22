@@ -164,9 +164,9 @@ async function onSubmit() {
     customer_id: customerId,
     type: form.type,
     invoice_date: form.invoice_date,
-    discount_amount: form.discount_amount > 0 ? form.discount_amount : undefined,
-    discount_percentage: form.discount_percentage > 0 ? form.discount_percentage : undefined,
-    tax_percentage: form.tax_percentage > 0 ? form.tax_percentage : undefined,
+    discount_amount: form.discount_amount > 0 ? form.discount_amount : 0,
+    discount_percentage: form.discount_percentage > 0 ? form.discount_percentage : 0,
+    tax_percentage: form.tax_percentage > 0 ? form.tax_percentage : 0,
     items: validItems.value,
   })
 }
@@ -229,8 +229,8 @@ watch(
         class="w-full mt-1"
       />
     </div>
-    <div class="grid gap-3">
-      <div class="col-12 md:col-6">
+    <div class="flex align-items-start gap-2">
+      <div>
         <div class="field">
           <label for="si-discount-percentage">نسبة الخصم (%) </label>
           <InputNumber
@@ -245,7 +245,7 @@ watch(
           />
         </div>
       </div>
-      <div class="col-12 md:col-6">
+      <div>
         <div class="field">
           <label for="si-discount-amount">المبلغ الثابت للخصم</label>
           <InputNumber
@@ -263,20 +263,18 @@ watch(
           </small>
         </div>
       </div>
-      <div class="col-12 md:col-6">
-        <div class="field">
-          <label for="si-tax-percentage">نسبة الضريبة (%) </label>
-          <InputNumber
-            id="si-tax-percentage"
-            v-model="form.tax_percentage"
-            :min="0"
-            :min-fraction-digits="0"
-            :max-fraction-digits="2"
-            class="w-full mt-1"
-            fluid
-          />
-        </div>
-      </div>
+    </div>
+    <div class="field">
+      <label for="si-tax-percentage">نسبة الضريبة (%) </label>
+      <InputNumber
+        id="si-tax-percentage"
+        v-model="form.tax_percentage"
+        :min="0"
+        :min-fraction-digits="0"
+        :max-fraction-digits="2"
+        class="w-full mt-1"
+        fluid
+      />
     </div>
     <div class="field">
       <div class="flex justify-content-between align-items-center mb-2">
@@ -340,7 +338,10 @@ watch(
         >يجب إضافة صنف واحد على الأقل بكمية وسعر صحيحين</small
       >
     </div>
-    <div class="flex flex-column gap-2 mt-3 p-3 border-round" style="background-color: var(--surface-50)">
+    <div
+      class="flex flex-column gap-2 mt-3 p-3 border-round"
+      style="background-color: var(--surface-50)"
+    >
       <div class="flex justify-content-between">
         <span>الإجمالي الجزئي:</span>
         <span class="font-semibold">{{ formatMoney(subtotalAmount) }}</span>

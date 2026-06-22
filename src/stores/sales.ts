@@ -168,7 +168,7 @@ export const useSalesStore = defineStore('sales', () => {
       amount: payload.amount,
       date: payload.date,
     }
-    
+
     if (balance_amount != null) {
       body.balance_amount = balance_amount
     }

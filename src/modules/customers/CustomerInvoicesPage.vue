@@ -22,6 +22,7 @@ import SaleInvoiceForm from '@/components/forms/SaleInvoiceForm.vue'
 import PaymentForm from '@/components/forms/PaymentForm.vue'
 import type { CustomerBalanceTransaction, CustomerWithInvoices, PaginatedPayload } from '@/types'
 import type { SaleInvoice, SaleInvoiceCreatePayload, PaymentPayload, InvoicePaymentLine } from '@/types'
+import SaleInvoicesTable from '@/components/tables/SaleInvoicesTable.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -394,6 +395,10 @@ function openEditInvoice(invoice: SaleInvoice) {
     customer: invoice.customer,
     type: invoice.type,
     invoice_date: invoice.invoice_date,
+    discount_amount: invoice.discount_amount,
+    discount_percentage: invoice.discount_percentage,
+    tax_amount: invoice.tax_amount,
+    tax_percentage: invoice.tax_percentage,
     items: invoice.items ?? [],
   }
   invoiceDialogVisible.value = true
@@ -999,105 +1004,13 @@ onMounted(async () => {
             @click="openCreateInvoice"
           />
         </div>
-        <DataTable
+        <SaleInvoicesTable
           v-else
-          :value="invoices"
-          data-key="id"
-          striped-rows
-          responsive-layout="scroll"
-          class="p-datatable-sm"
-        >
-          <Column field="invoice_number" header="رقم الفاتورة" />
-          <Column field="invoice_date" header="التاريخ" />
-          <Column field="type" header="النوع">
-            <template #body="{ data }">{{ typeLabel(data.type) }}</template>
-          </Column>
-          <Column field="total_amount" header="الإجمالي">
-            <template #body="{ data }">
-              <Tag :value="formatAmount(data.total_amount)" severity="info" />
-            </template>
-          </Column>
-          <Column field="paid_amount" header="المدفوع">
-            <template #body="{ data }">
-              <Tag :value="formatAmount(data.paid_amount)" severity="success" />
-            </template>
-          </Column>
-          <Column header="المتبقي">
-            <template #body="{ data }">
-              <Tag
-                :value="formatAmount(Math.max(0, data.total_amount - data.paid_amount))"
-                :severity="data.total_amount - data.paid_amount > 0 ? 'warn' : 'secondary'"
-              />
-            </template>
-          </Column>
-          <Column field="status" header="الحالة">
-            <template #body="{ data }">
-              <Tag
-                :value="statusLabel(data.status)"
-                :severity="
-                  data.status === 'paid' ? 'success' : data.status === 'partial' ? 'warn' : 'danger'
-                "
-              />
-            </template>
-          </Column>
-          <Column header="صرف">
-            <template #body="{ data }">
-              <Tag
-                :value="DISPENSE_STATUS_LABELS[getDispenseStats(data.items).status]"
-                :severity="DISPENSE_STATUS_SEVERITY[getDispenseStats(data.items).status]"
-              />
-            </template>
-          </Column>
-          <Column header="تم الصرف">
-            <template #body="{ data }">
-              {{ formatAmount(getDispenseStats(data.items).dispensedAmount) }}
-            </template>
-          </Column>
-          <Column header="متبقي الصرف">
-            <template #body="{ data }">
-              {{ formatAmount(getDispenseStats(data.items).remainingAmount) }}
-            </template>
-          </Column>
-          <Column header="الإجراءات" style="width: 260px">
-            <template #body="{ data }">
-              <Button
-                label="عرض"
-                icon="pi pi-eye"
-                text
-                size="small"
-                class="p-button-info"
-                @click="openInvoiceDetails(data)"
-              />
-              <Button
-                v-if="data.status === 'unpaid'"
-                label="تعديل"
-                icon="pi pi-pencil"
-                text
-                size="small"
-                class="p-button-success"
-                @click="openEditInvoice(data)"
-              />
-              <Button
-                v-if="data.status === 'unpaid' || data.status === 'partial'"
-                label="دفعة"
-                icon="pi pi-wallet"
-                text
-                size="small"
-                class="p-button-warning"
-                @click="openInvoiceDetails(data, true)"
-              />
-              <Button
-                v-if="data.status === 'unpaid'"
-                label="حذف"
-                icon="pi pi-trash"
-                text
-                size="small"
-                class="p-button-danger"
-                @click="confirmDeleteInvoice(data)"
-              />
-            </template>
-          </Column>
-        </DataTable>
+          :invoices="invoices"
+          @view-invoice="openInvoiceDetails($event)"
+          @edit-invoice="openEditInvoice($event)"
+          @delete-invoice="confirmDeleteInvoice($event)"
+        />
         <Dialog
           v-model:visible="detailsDialogVisible"
           :header="

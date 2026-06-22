@@ -1,4 +1,4 @@
-import type { SaleInvoiceItem } from '@/types'
+import type { SaleInvoice, SaleInvoiceItem } from '@/types'
 
 export type DispenseStatus = 'full' | 'partial' | 'none'
 
@@ -26,19 +26,22 @@ export function isDispenseStockInsufficient(
   return available < item.quantity
 }
 
-export function getDispenseStats(items: SaleInvoiceItem[] | undefined): DispenseStats {
+export function getDispenseStats(items: SaleInvoiceItem[] | undefined, invoice?: SaleInvoice): DispenseStats {
   const list = items ?? []
   let dispensedAmount = 0
   let remainingAmount = 0
   let dispensedCount = 0
 
+  const discountPerItem = invoice ? (invoice.discount_amount / invoice.items.length) : 0
+  const taxPerItem = invoice ? (invoice.tax_amount / invoice.items.length) : 0
+
   for (const item of list) {
     const amt = itemAmount(item)
     if (item.is_dispensed) {
-      dispensedAmount += amt
+      dispensedAmount += amt - discountPerItem + taxPerItem
       dispensedCount++
     } else {
-      remainingAmount += amt
+      remainingAmount += amt - discountPerItem + taxPerItem
     }
   }
 
@@ -61,8 +64,14 @@ export const DISPENSE_STATUS_LABELS: Record<DispenseStatus, string> = {
   none: 'لم يتم الصرف',
 }
 
-export const DISPENSE_STATUS_SEVERITY: Record<DispenseStatus, 'success' | 'warn' | 'secondary'> = {
+export const DISPENSE_STATUS_SEVERITY: Record<DispenseStatus, 'success' | 'warn' | 'danger'> = {
   full: 'success',
   partial: 'warn',
-  none: 'secondary',
+  none: 'danger',
+}
+
+export const DISPENSE_STATUS_ICONS: Record<DispenseStatus, string> = {
+  full: 'pi pi-check-circle',
+  partial: 'pi pi-exclamation-triangle',
+  none: 'pi pi-times-circle',
 }
