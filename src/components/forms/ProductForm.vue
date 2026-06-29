@@ -86,11 +86,9 @@ async function onSubmit() {
     unit: form.unit.trim() || 'قطعة',
     purchase_price: form.purchase_price,
     sale_price: form.sale_price,
+    opening_quantity: form.opening_quantity,
     min_quantity: form.min_quantity,
     description: form.description?.trim() || undefined,
-  }
-  if (!props.isEdit) {
-    payload.opening_quantity = form.opening_quantity
   }
   if (form.auto_generate_code) {
     payload.auto_generate_code = true
@@ -216,7 +214,7 @@ function errorMsg(field: keyof typeof form) {
       <small v-if="v$.sale_price.$error" class="p-error">{{ errorMsg('sale_price') }}</small>
     </div>
 
-    <div v-if="!props.isEdit" class="field">
+    <div class="field">
       <label for="p-opening">الكمية الافتتاحية <span class="text-red-500">*</span></label>
       <InputNumber
         id="p-opening"
@@ -234,17 +232,6 @@ function errorMsg(field: keyof typeof form) {
       <small v-if="v$.opening_quantity?.$error" class="p-error">{{
         errorMsg('opening_quantity')
       }}</small>
-    </div>
-
-    <div v-else class="field">
-      <label for="p-opening-ro">الكمية الافتتاحية</label>
-      <InputText
-        id="p-opening-ro"
-        :model-value="displayQty(form.opening_quantity)"
-        class="w-full mt-1"
-        readonly
-        disabled
-      />
     </div>
 
     <div class="field">

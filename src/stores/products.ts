@@ -98,6 +98,7 @@ export const useProductsStore = defineStore('products', () => {
         unit: product.unit,
         purchase_price: product.purchase_price,
         sale_price: product.sale_price,
+        opening_quantity: product.opening_quantity,
         min_quantity: product.min_quantity,
         description: product.description || undefined,
       }
