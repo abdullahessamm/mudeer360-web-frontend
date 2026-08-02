@@ -30,6 +30,7 @@ const EXPENSE_TYPE_LABELS: Record<string, string> = {
   marketing: 'تسويق',
   other: 'أخرى',
   purchase_invoice: 'فاتورة شراء',
+  cost_of_sold_products: 'تكلفة البضاعة المباعة',
   payroll: 'رواتب (موظفين)',
   employee: 'موظف (سلفة/…)',
   customer_balance: 'رصيد عميل',
