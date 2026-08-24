@@ -545,6 +545,7 @@ export interface PurchaseReturnItem {
   product_unit?: string
   quantity: number
   unit_price: number
+  discount_per_item?: number
   total_price: number
 }
 
@@ -555,6 +556,7 @@ export interface PurchaseReturn {
   supplier?: Supplier | null
   purchase_invoice_id: number | null
   amount: number
+  discount?: number
   net_amount: number
   date: string
   notes?: string | null
@@ -572,5 +574,6 @@ export interface PurchaseReturnCreatePayload {
     product_id: number
     quantity: number
     unit_price: number
+    discount?: number
   }[]
 }

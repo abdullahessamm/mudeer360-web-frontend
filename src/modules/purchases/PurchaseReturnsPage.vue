@@ -42,7 +42,9 @@ interface ReturnFormLine {
   product_id: number | null
   quantity: number
   unit_price: number
+  discount: number
   max_quantity?: number
+  _discountRatio?: number
 }
 
 const formModel = ref<{
@@ -67,7 +69,7 @@ const formDateValue = computed({
 })
 
 function emptyLine(): ReturnFormLine {
-  return { product_id: null, quantity: 1, unit_price: 0 }
+  return { product_id: null, quantity: 1, unit_price: 0, discount: 0 }
 }
 
 // ── Auto-fill from purchase invoice ──────────────────────────────────────────
@@ -91,13 +93,22 @@ async function onInvoiceSelected(invoiceId: number | null) {
     }
 
     if (invoice?.items?.length) {
+      const discountRatio = invoice.subtotal_amount > 0 
+        ? invoice.discount_amount / invoice.subtotal_amount 
+        : 0;
+
       const itemsToReturn = invoice.items.map((item) => {
         const remaining = item.quantity - (item.returned_quantity || 0);
+        const itemSubtotal = remaining * item.unit_price;
+        const itemDiscount = Number((itemSubtotal * discountRatio).toFixed(2));
+
         return {
           product_id: item.product_id,
           quantity: remaining,
           unit_price: item.unit_price,
+          discount: itemDiscount,
           max_quantity: remaining,
+          _discountRatio: discountRatio
         }
       }).filter((item) => item.max_quantity > 0)
       
@@ -137,7 +148,14 @@ const productOptions = computed(() =>
 
 // ── Computed line totals ──────────────────────────────────────────────────────
 function lineTotal(line: ReturnFormLine): number {
-  return Math.max(0, line.unit_price * line.quantity)
+  const sub = line.unit_price * line.quantity
+  return Math.max(0, sub - (line.discount || 0))
+}
+
+function updateLineCalculations(line: ReturnFormLine) {
+  if (line._discountRatio !== undefined) {
+    line.discount = Number(((line.quantity * line.unit_price) * line._discountRatio).toFixed(2));
+  }
 }
 
 const formTotal = computed(() =>
@@ -204,6 +222,7 @@ function openEdit(r: PurchaseReturn) {
       product_id: i.product_id,
       quantity: i.quantity,
       unit_price: i.unit_price,
+      discount: i.discount_per_item ?? 0,
     })),
   }
   dialogVisible.value = true
@@ -243,6 +262,7 @@ async function submitForm() {
       product_id: i.product_id!,
       quantity: i.quantity,
       unit_price: i.unit_price,
+      discount: i.discount,
     })),
   }
 
@@ -487,11 +507,15 @@ function formatAmount(n: number) {
                 </div>
                 <div class="item-field">
                   <label class="item-label">الكمية</label>
-                  <InputNumber v-model="line.quantity" :min="0.01" :min-fraction-digits="0" :max-fraction-digits="4" class="w-full" />
+                  <InputNumber v-model="line.quantity" :min="0.01" :min-fraction-digits="0" :max-fraction-digits="4" class="w-full" @input="updateLineCalculations(line)" />
                 </div>
                 <div class="item-field">
                   <label class="item-label">سعر الوحدة</label>
-                  <InputNumber v-model="line.unit_price" :min="0" :min-fraction-digits="0" :max-fraction-digits="4" class="w-full" />
+                  <InputNumber v-model="line.unit_price" :min="0" :min-fraction-digits="0" :max-fraction-digits="4" class="w-full" @input="updateLineCalculations(line)" />
+                </div>
+                <div class="item-field">
+                  <label class="item-label">الخصم</label>
+                  <InputNumber v-model="line.discount" :min="0" :min-fraction-digits="0" :max-fraction-digits="4" class="w-full" />
                 </div>
                 <div class="item-total-block">
                   <span class="item-total-label">الإجمالي</span>

@@ -484,7 +484,7 @@ async function onUndispenseAll() {
   if (!selectedInvoice.value) return
   try {
     const dispensedIds =
-      selectedInvoice.value.items?.filter((i) => i.is_dispensed && i.id && !(i.returned_quantity > 0)).map((i) => i.id!) ?? []
+      selectedInvoice.value.items?.filter((i) => i.is_dispensed && i.id && !((i.returned_quantity || 0) > 0)).map((i) => i.id!) ?? []
     if (dispensedIds.length === 0) return
     await salesStore.undispense(selectedInvoice.value.id, dispensedIds)
     showSuccess('تم تراجع صرف الأصناف بنجاح')
