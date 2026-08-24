@@ -9,6 +9,7 @@ import { useProductCategoriesStore } from '@/stores/productCategories'
 import { useDashboardStore } from '@/stores/dashboard'
 import Paginator from 'primevue/paginator'
 import ProductForm from '@/components/forms/ProductForm.vue'
+import StockPeriodReportDialog from '@/components/dialogs/StockPeriodReportDialog.vue'
 import type { Product, ProductStockMovement, PaginatedPayload } from '@/types'
 
 const route = useRoute()
@@ -47,6 +48,8 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editingId = ref<number | null>(null)
 const formModel = ref<(Partial<Product> & { auto_generate_code?: boolean }) | null>(null)
+
+const stockPeriodDialogVisible = ref(false)
 
 const stockDialogVisible = ref(false)
 const stockProduct = ref<Product | null>(null)
@@ -237,7 +240,16 @@ onMounted(async () => {
           <label for="low-stock" class="cursor-pointer text-sm">رصيد منخفض (الحد الأدنى ≥ الكمية)</label>
         </div>
       </div>
-      <Button label="إضافة منتج" icon="pi pi-plus" @click="openCreate" />
+      <div class="flex align-items-center gap-2">
+        <Button
+          label="تقرير حركة المخزون بالفترة"
+          icon="pi pi-calendar"
+          severity="secondary"
+          outlined
+          @click="stockPeriodDialogVisible = true"
+        />
+        <Button label="إضافة منتج" icon="pi pi-plus" @click="openCreate" />
+      </div>
     </div>
     <Card>
       <template #content>
@@ -414,5 +426,7 @@ onMounted(async () => {
         </p>
       </div>
     </Dialog>
+
+    <StockPeriodReportDialog v-model:visible="stockPeriodDialogVisible" />
   </div>
 </template>

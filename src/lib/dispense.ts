@@ -32,8 +32,9 @@ export function getDispenseStats(items: SaleInvoiceItem[] | undefined, invoice?:
   let remainingAmount = 0
   let dispensedCount = 0
 
-  const discountPerItem = invoice ? (invoice.discount_amount / invoice.items.length) : 0
-  const taxPerItem = invoice ? (invoice.tax_amount / invoice.items.length) : 0
+  const itemsCount = invoice?.items?.length || 0
+  const discountPerItem = invoice && itemsCount > 0 ? invoice.discount_amount / itemsCount : 0
+  const taxPerItem = invoice && itemsCount > 0 ? invoice.tax_amount / itemsCount : 0
 
   for (const item of list) {
     const amt = itemAmount(item)

@@ -72,6 +72,33 @@ export interface ProductStockMovement {
   created_at?: string
 }
 
+export interface StockPeriodReportItem {
+  id: number
+  product_code: string | null
+  name: string
+  category_name: string | null
+  unit: string
+  purchase_price: number
+  sale_price: number
+  opening_quantity: number
+  ending_quantity: number
+  current_quantity: number
+  min_quantity: number
+}
+
+export interface StockPeriodReportSummary {
+  total_products: number
+  total_opening_quantity: number
+  total_ending_quantity: number
+}
+
+export interface StockPeriodReportPayload {
+  date_from: string
+  date_to: string
+  summary: StockPeriodReportSummary
+  items: StockPeriodReportItem[]
+}
+
 export interface Supplier {
   id: number
   name: string
@@ -134,6 +161,15 @@ export interface SaleInvoiceItem {
   stock_deducted?: boolean
 }
 
+export interface SaleInvoiceOtherCost {
+  id?: number
+  sale_invoice_id?: number
+  description: string
+  cost: number
+  created_at?: string
+  updated_at?: string
+}
+
 /** Full sale invoice (from /api/sale-invoices) */
 export interface SaleInvoice {
   id: number
@@ -150,7 +186,9 @@ export interface SaleInvoice {
   paid_amount: number
   status: 'paid' | 'partial' | 'unpaid'
   invoice_date: string
+  notes?: string | null
   items: SaleInvoiceItem[]
+  other_costs?: SaleInvoiceOtherCost[]
   payments?: InvoicePaymentLine[]
   created_at?: string
   updated_at?: string
@@ -161,10 +199,12 @@ export interface SaleInvoiceCreatePayload {
   customer_id?: number
   type: 'cash' | 'credit'
   invoice_date: string
+  notes?: string | null
   discount_amount?: number
   discount_percentage?: number
   tax_percentage?: number
-  items: { product_id: number; quantity: number; unit_price: number }[]
+  items?: { product_id: number; quantity: number; unit_price: number }[]
+  other_costs?: { description: string; cost: number }[]
 }
 
 /** Purchase invoice item (line item) */

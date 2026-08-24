@@ -151,6 +151,30 @@ export const useProductsStore = defineStore('products', () => {
     return parsePaginatedResponse<ProductStockMovement>(data)
   }
 
+  async function fetchStockPeriodReport(params: {
+    date_from: string
+    date_to: string
+    product_category_id?: number | null
+    search?: string
+    low_stock?: boolean
+  }) {
+    const queryParams: Record<string, string | number | boolean> = {
+      date_from: params.date_from,
+      date_to: params.date_to,
+    }
+    if (params.product_category_id) {
+      queryParams.product_category_id = params.product_category_id
+    }
+    if (params.search && params.search.trim()) {
+      queryParams.search = params.search.trim()
+    }
+    if (params.low_stock) {
+      queryParams.low_stock = true
+    }
+    const { data } = await apiClient.get('/api/reports/stock-period', { params: queryParams })
+    return unwrapPayload<import('@/types').StockPeriodReportPayload>(data)
+  }
+
   return {
     items,
     allProducts,
@@ -169,5 +193,6 @@ export const useProductsStore = defineStore('products', () => {
     byId,
     clearError,
     fetchStockMovements,
+    fetchStockPeriodReport,
   }
 })

@@ -399,7 +399,9 @@ function openCreateInvoice() {
     customer: customer.value,
     type: 'credit',
     invoice_date: formatDateLocal(new Date()),
+    notes: '',
     items: [],
+    other_costs: [],
   }
   invoiceDialogVisible.value = true
 }
@@ -413,11 +415,13 @@ function openEditInvoice(invoice: SaleInvoice) {
     customer: invoice.customer,
     type: invoice.type,
     invoice_date: invoice.invoice_date,
+    notes: invoice.notes ?? '',
     discount_amount: invoice.discount_amount,
     discount_percentage: invoice.discount_percentage,
     tax_amount: invoice.tax_amount,
     tax_percentage: invoice.tax_percentage,
     items: invoice.items ?? [],
+    other_costs: invoice.other_costs ?? [],
   }
   invoiceDialogVisible.value = true
   detailsDialogVisible.value = false
@@ -1168,6 +1172,12 @@ onMounted(async () => {
                   />
                 </div>
               </div>
+              <div v-if="selectedInvoice.notes" class="flex flex-column gap-1">
+                <span class="text-sm font-semibold text-color-secondary">ملاحظات:</span>
+                <div class="p-2 border-round surface-100 text-sm line-height-3 white-space-pre-wrap">
+                  {{ selectedInvoice.notes }}
+                </div>
+              </div>
               <Divider class="my-1" />
               <div class="flex flex-column gap-2">
                 <div class="flex align-items-center justify-content-between">
@@ -1301,6 +1311,15 @@ onMounted(async () => {
                   </Column>
                 </DataTable>
               </div>
+              <div v-if="selectedInvoice.other_costs?.length" class="flex flex-column gap-2">
+                <h4 class="mt-0 mb-2">التكاليف الأخرى</h4>
+                <DataTable :value="selectedInvoice.other_costs" size="small" class="p-datatable-sm">
+                  <Column field="description" header="الوصف / البيان" />
+                  <Column field="cost" header="التكلفة" style="width: 140px">
+                    <template #body="{ data }">{{ formatAmount(data.cost) }}</template>
+                  </Column>
+                </DataTable>
+              </div>
               <div class="flex flex-column gap-2">
                 <div class="flex justify-content-between align-items-center">
                   <h4 class="mt-0 mb-2">الدفعات</h4>
@@ -1399,6 +1418,9 @@ onMounted(async () => {
                 <p class="invoice-print-meta m-0">
                   الحالة: {{ statusLabel(selectedInvoice.status) }}
                 </p>
+                <p v-if="selectedInvoice.notes" class="invoice-print-meta m-0">
+                  الملاحظات: {{ selectedInvoice.notes }}
+                </p>
                 <p class="invoice-print-meta m-0">تاريخ الإصدار: {{ issuedAtLabel }}</p>
                 <div class="invoice-print-rule" />
               </header>
@@ -1426,6 +1448,24 @@ onMounted(async () => {
                   </tbody>
                 </table>
                 <p v-else class="text-color-secondary m-0">لا توجد أصناف</p>
+              </section>
+
+              <section v-if="selectedInvoice.other_costs?.length" class="invoice-print-section">
+                <h4 class="invoice-print-h4">التكاليف الأخرى</h4>
+                <table class="invoice-print-table">
+                  <thead>
+                    <tr>
+                      <th>الوصف / البيان</th>
+                      <th style="width: 140px">التكلفة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(cost, idx) in selectedInvoice.other_costs" :key="cost.id ?? idx">
+                      <td>{{ cost.description }}</td>
+                      <td>{{ formatAmount(cost.cost) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </section>
 
               <section class="invoice-print-section">

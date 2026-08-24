@@ -2,7 +2,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useCustomersStore } from '@/stores/customers'
 import { formatDateLocal } from '@/lib/date'
-import type { Customer, SaleInvoice, SaleInvoiceCreatePayload, SaleInvoiceItem } from '@/types'
+import type { Customer, SaleInvoice, SaleInvoiceCreatePayload, SaleInvoiceItem, SaleInvoiceOtherCost } from '@/types'
 import { formatMoney } from '@/lib/format'
 
 const props = defineProps<{
@@ -32,8 +32,17 @@ interface RowItem {
   unit_price: number
 }
 
+interface RowCost {
+  _rowId: number
+  description: string
+  cost: number
+}
+
 let rowIdCounter = 0
+let costIdCounter = 0
+
 const rows = ref<RowItem[]>([])
+const costRows = ref<RowCost[]>([])
 
 /** Customer input: selected Customer object or typed string (for new customer) */
 const customerInput = ref<Customer | string | null>(null)
@@ -41,6 +50,7 @@ const customerInput = ref<Customer | string | null>(null)
 const form = reactive({
   type: (props.modelValue?.type ?? 'credit') as 'cash' | 'credit',
   invoice_date: props.modelValue?.invoice_date ?? today,
+  notes: (props.modelValue?.notes ?? '') as string,
   discount_amount: (props.modelValue?.discount_amount ?? 0) as number,
   discount_percentage: (props.modelValue?.discount_percentage ?? 0) as number,
   tax_percentage: (props.modelValue?.tax_percentage ?? 0) as number,
@@ -66,9 +76,11 @@ watch(
       }
       form.type = (v.type ?? 'credit') as 'cash' | 'credit'
       form.invoice_date = v.invoice_date ?? today
+      form.notes = v.notes ?? ''
       form.discount_amount = v.discount_amount ?? 0
       form.discount_percentage = v.discount_percentage ?? 0
       form.tax_percentage = v.tax_percentage ?? 0
+
       if (v.items?.length) {
         rows.value = v.items.map((it: SaleInvoiceItem) => ({
           _rowId: ++rowIdCounter,
@@ -76,6 +88,18 @@ watch(
           quantity: it.quantity ?? 0,
           unit_price: it.unit_price ?? 0,
         }))
+      } else {
+        rows.value = []
+      }
+
+      if (v.other_costs?.length) {
+        costRows.value = v.other_costs.map((c: SaleInvoiceOtherCost) => ({
+          _rowId: ++costIdCounter,
+          description: c.description ?? '',
+          cost: c.cost ?? 0,
+        }))
+      } else {
+        costRows.value = []
       }
     }
   },
@@ -95,6 +119,18 @@ function removeRow(index: number) {
   rows.value.splice(index, 1)
 }
 
+function addCostRow() {
+  costRows.value.push({
+    _rowId: ++costIdCounter,
+    description: '',
+    cost: 0,
+  })
+}
+
+function removeCostRow(index: number) {
+  costRows.value.splice(index, 1)
+}
+
 function onProductSelect(index: number, productId: number | null) {
   const row = rows.value[index]
   if (!row) return
@@ -107,9 +143,18 @@ function onProductSelect(index: number, productId: number | null) {
   }
 }
 
-const subtotalAmount = computed(() =>
-  rows.value.reduce((sum, r) => sum + r.quantity * r.unit_price, 0),
+const productsSubtotal = computed(() =>
+  rows.value.reduce(
+    (sum, r) => sum + (r.product_id ? (r.quantity || 0) * (r.unit_price || 0) : 0),
+    0,
+  ),
 )
+
+const costsSubtotal = computed(() =>
+  costRows.value.reduce((sum, r) => sum + (Number(r.cost) || 0), 0),
+)
+
+const subtotalAmount = computed(() => productsSubtotal.value + costsSubtotal.value)
 
 const calculatedDiscountAmount = computed(() => {
   if (form.discount_percentage > 0) {
@@ -136,7 +181,18 @@ const validItems = computed(() => {
     }))
 })
 
-const canSubmit = computed(() => validItems.value.length >= 1)
+const validOtherCosts = computed(() => {
+  return costRows.value
+    .filter((r) => r.description.trim() !== '' && Number(r.cost) >= 0)
+    .map((r) => ({
+      description: r.description.trim(),
+      cost: Number(r.cost) || 0,
+    }))
+})
+
+const hasValidItems = computed(() => validItems.value.length > 0)
+const hasValidCosts = computed(() => validOtherCosts.value.length > 0)
+const canSubmit = computed(() => hasValidItems.value || hasValidCosts.value)
 
 function onCustomerComplete(event: { query: string }) {
   const q = (event.query ?? '').trim().toLowerCase()
@@ -164,10 +220,12 @@ async function onSubmit() {
     customer_id: customerId,
     type: form.type,
     invoice_date: form.invoice_date,
+    notes: form.notes?.trim() || undefined,
     discount_amount: form.discount_amount > 0 ? form.discount_amount : 0,
     discount_percentage: form.discount_percentage > 0 ? form.discount_percentage : 0,
     tax_percentage: form.tax_percentage > 0 ? form.tax_percentage : 0,
     items: validItems.value,
+    other_costs: validOtherCosts.value,
   })
 }
 
@@ -175,11 +233,11 @@ function onCancel() {
   emit('cancel')
 }
 
-// Ensure at least one row on create
+// On create, start with 1 row if empty
 watch(
   () => rows.value.length,
   (len) => {
-    if (len === 0 && !props.isEdit) addRow()
+    if (len === 0 && costRows.value.length === 0 && !props.isEdit) addRow()
   },
   { immediate: true },
 )
@@ -204,6 +262,7 @@ watch(
         >اختر عميلاً موجوداً أو اكتب اسماً جديداً لإنشائه</small
       >
     </div>
+
     <div class="field">
       <label for="si-type">النوع <span class="text-red-500">*</span></label>
       <Select
@@ -218,6 +277,7 @@ watch(
         class="w-full mt-1"
       />
     </div>
+
     <div class="field">
       <label for="si-date">تاريخ الفاتورة <span class="text-red-500">*</span></label>
       <DatePicker
@@ -229,8 +289,21 @@ watch(
         class="w-full mt-1"
       />
     </div>
+
+    <div class="field">
+      <label for="si-notes">ملاحظات الفاتورة</label>
+      <Textarea
+        id="si-notes"
+        v-model="form.notes"
+        rows="2"
+        placeholder="أدخل أي ملاحظات خاصة بالفاتورة أو تعليمات التسليم..."
+        class="w-full mt-1"
+        auto-resize
+      />
+    </div>
+
     <div class="flex align-items-start gap-2">
-      <div>
+      <div class="flex-1">
         <div class="field">
           <label for="si-discount-percentage">نسبة الخصم (%) </label>
           <InputNumber
@@ -245,7 +318,7 @@ watch(
           />
         </div>
       </div>
-      <div>
+      <div class="flex-1">
         <div class="field">
           <label for="si-discount-amount">المبلغ الثابت للخصم</label>
           <InputNumber
@@ -264,6 +337,7 @@ watch(
         </div>
       </div>
     </div>
+
     <div class="field">
       <label for="si-tax-percentage">نسبة الضريبة (%) </label>
       <InputNumber
@@ -276,12 +350,18 @@ watch(
         fluid
       />
     </div>
+
+    <!-- Products Table Section -->
     <div class="field">
       <div class="flex justify-content-between align-items-center mb-2">
-        <label>الأصناف <span class="text-red-500">*</span></label>
-        <Button label="إضافة صنف" icon="pi pi-plus" size="small" @click="addRow" />
+        <div class="flex align-items-center gap-2">
+          <label class="font-bold">الأصناف / المنتجات</label>
+          <span class="text-xs text-color-secondary">(اختياري)</span>
+        </div>
+        <Button label="إضافة صنف" icon="pi pi-plus" size="small" outlined @click="addRow" />
       </div>
-      <DataTable :value="rows" data-key="_rowId" size="small" class="p-datatable-sm">
+
+      <DataTable v-if="rows.length > 0" :value="rows" data-key="_rowId" size="small" class="p-datatable-sm">
         <Column header="المنتج" style="min-width: 200px">
           <template #body="{ data, index }">
             <Select
@@ -295,8 +375,8 @@ watch(
             />
           </template>
         </Column>
-        <Column header="الكمية" style="width: 120px">
-          <template #body="{ data, index }">
+        <Column header="الكمية" style="width: 110px">
+          <template #body="{ data }">
             <InputNumber
               v-model="data.quantity"
               :min="0.01"
@@ -307,7 +387,7 @@ watch(
           </template>
         </Column>
         <Column header="سعر الوحدة" style="width: 120px">
-          <template #body="{ data, index }">
+          <template #body="{ data }">
             <InputNumber
               v-model="data.unit_price"
               :min="0"
@@ -319,10 +399,10 @@ watch(
         </Column>
         <Column header="المجموع" style="width: 100px">
           <template #body="{ data }">
-            {{ formatMoney(data.quantity * data.unit_price) }}
+            {{ formatMoney((data.quantity || 0) * (data.unit_price || 0)) }}
           </template>
         </Column>
-        <Column header="" style="width: 60px">
+        <Column header="" style="width: 50px">
           <template #body="{ index }">
             <Button
               icon="pi pi-trash"
@@ -334,14 +414,84 @@ watch(
           </template>
         </Column>
       </DataTable>
-      <small v-if="!canSubmit && rows.length > 0" class="p-error"
-        >يجب إضافة صنف واحد على الأقل بكمية وسعر صحيحين</small
+
+      <div
+        v-else
+        class="p-3 text-center border-round border-1 border-dashed surface-border text-color-secondary text-sm"
       >
+        لا توجد أصناف مضافة. يمكنك إضافة صنف أو الاكتفاء بالتكاليف الأخرى.
+      </div>
     </div>
+
+    <!-- Other Costs Section -->
+    <div class="field mt-2">
+      <div class="flex justify-content-between align-items-center mb-2">
+        <div class="flex align-items-center gap-2">
+          <label class="font-bold">التكاليف الأخرى</label>
+          <span class="text-xs text-color-secondary">(اختياري - شحن، تركيب، خدمات...)</span>
+        </div>
+        <Button label="إضافة تكلفة" icon="pi pi-plus" size="small" severity="secondary" outlined @click="addCostRow" />
+      </div>
+
+      <DataTable v-if="costRows.length > 0" :value="costRows" data-key="_rowId" size="small" class="p-datatable-sm">
+        <Column header="الوصف / البيان" style="min-width: 250px">
+          <template #body="{ data }">
+            <InputText
+              v-model="data.description"
+              placeholder="مثال: رسوم شحن وتوصيل، خدمة تركيب..."
+              class="w-full p-inputtext-sm"
+            />
+          </template>
+        </Column>
+        <Column header="التكلفة" style="width: 140px">
+          <template #body="{ data }">
+            <InputNumber
+              v-model="data.cost"
+              :min="0"
+              :min-fraction-digits="0"
+              :max-fraction-digits="2"
+              class="w-full p-inputtext-sm"
+            />
+          </template>
+        </Column>
+        <Column header="" style="width: 50px">
+          <template #body="{ index }">
+            <Button
+              icon="pi pi-trash"
+              text
+              severity="danger"
+              size="small"
+              @click="removeCostRow(index)"
+            />
+          </template>
+        </Column>
+      </DataTable>
+
+      <div
+        v-else
+        class="p-3 text-center border-round border-1 border-dashed surface-border text-color-secondary text-sm"
+      >
+        لا توجد تكاليف أخرى مضافة.
+      </div>
+
+      <small v-if="!canSubmit" class="p-error block mt-2">
+        يجب أن تحتوي الفاتورة على صنف واحد على الأقل أو تكلفة أخرى واحدة على الأقل.
+      </small>
+    </div>
+
+    <!-- Summary & Totals Box -->
     <div
-      class="flex flex-column gap-2 mt-3 p-3 border-round"
+      class="flex flex-column gap-2 mt-2 p-3 border-round"
       style="background-color: var(--surface-50)"
     >
+      <div v-if="productsSubtotal > 0 && costsSubtotal > 0" class="flex justify-content-between text-sm text-color-secondary">
+        <span>إجمالي الأصناف:</span>
+        <span>{{ formatMoney(productsSubtotal) }}</span>
+      </div>
+      <div v-if="costsSubtotal > 0 && productsSubtotal > 0" class="flex justify-content-between text-sm text-color-secondary">
+        <span>إجمالي التكاليف الأخرى:</span>
+        <span>{{ formatMoney(costsSubtotal) }}</span>
+      </div>
       <div class="flex justify-content-between">
         <span>الإجمالي الجزئي:</span>
         <span class="font-semibold">{{ formatMoney(subtotalAmount) }}</span>
@@ -360,6 +510,7 @@ watch(
         <span class="font-bold text-xl text-green-600">{{ formatMoney(totalAmount) }}</span>
       </div>
     </div>
+
     <div class="flex justify-content-end gap-2 mt-3">
       <Button type="button" label="إلغاء" text @click="onCancel" />
       <Button
