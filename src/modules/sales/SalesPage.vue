@@ -380,7 +380,7 @@ async function onUndispenseAll() {
   if (!store.currentInvoice) return
   try {
     const dispensedIds =
-      store.currentInvoice.items?.filter((i) => i.is_dispensed && i.id).map((i) => i.id!) ?? []
+      store.currentInvoice.items?.filter((i) => i.is_dispensed && i.id && !i.returned_quantity).map((i) => i.id!) ?? []
     if (dispensedIds.length === 0) return
     await store.undispense(store.currentInvoice.id, dispensedIds)
     showSuccess('تم تراجع صرف الأصناف بنجاح')
@@ -854,6 +854,11 @@ onMounted(async () => {
                         value="مخزون غير كافٍ"
                         severity="warn"
                       />
+                      <Tag
+                        v-if="data.returned_quantity > 0"
+                        :value="`تم إرجاع: ${data.returned_quantity}`"
+                        severity="danger"
+                      />
                     </div>
                   </div>
                 </template>
@@ -894,20 +899,21 @@ onMounted(async () => {
                     :loading="dispensingItemId === data.id"
                     @click="onDispenseItem(data)"
                   />
-                  <Button
-                    v-else-if="data.is_dispensed && data.id"
-                    label="تراجع"
-                    icon="pi pi-undo"
-                    text
-                    size="small"
-                    severity="warn"
-                    :loading="dispensingItemId === data.id"
-                    @click="onUndispenseItem(data)"
-                  />
-                </template>
-              </Column>
-            </DataTable>
-          </div>
+                    <Button
+                      v-else-if="data.is_dispensed && data.id"
+                      label="تراجع"
+                      icon="pi pi-undo"
+                      text
+                      size="small"
+                      severity="warn"
+                      :loading="dispensingItemId === data.id"
+                      :disabled="data.returned_quantity > 0"
+                      @click="onUndispenseItem(data)"
+                    />
+                  </template>
+                </Column>
+              </DataTable>
+            </div>
           <div v-if="store.currentInvoice.other_costs?.length" class="flex flex-column gap-2">
             <h4 class="mt-0 mb-2">التكاليف الأخرى</h4>
             <DataTable :value="store.currentInvoice.other_costs" size="small" class="p-datatable-sm">

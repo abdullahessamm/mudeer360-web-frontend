@@ -484,7 +484,7 @@ async function onUndispenseAll() {
   if (!selectedInvoice.value) return
   try {
     const dispensedIds =
-      selectedInvoice.value.items?.filter((i) => i.is_dispensed && i.id).map((i) => i.id!) ?? []
+      selectedInvoice.value.items?.filter((i) => i.is_dispensed && i.id && !(i.returned_quantity > 0)).map((i) => i.id!) ?? []
     if (dispensedIds.length === 0) return
     await salesStore.undispense(selectedInvoice.value.id, dispensedIds)
     showSuccess('تم تراجع صرف الأصناف بنجاح')
@@ -1257,6 +1257,11 @@ onMounted(async () => {
                             value="مخزون غير كافٍ"
                             severity="warn"
                           />
+                          <Tag
+                            v-if="item.returned_quantity > 0"
+                            :value="`تم إرجاع: ${item.returned_quantity}`"
+                            severity="danger"
+                          />
                         </div>
                       </div>
                     </template>
@@ -1305,6 +1310,7 @@ onMounted(async () => {
                         size="small"
                         severity="warn"
                         :loading="dispensingItemId === item.id"
+                        :disabled="item.returned_quantity > 0"
                         @click="onUndispenseItem(selectedInvoice, item)"
                       />
                     </template>

@@ -1152,6 +1152,12 @@ onMounted(async () => {
                         severity="success"
                         class="mr-2"
                       />
+                      <Tag
+                        v-if="item.returned_quantity > 0"
+                        :value="`تم إرجاع: ${item.returned_quantity}`"
+                        severity="danger"
+                        class="mr-2"
+                      />
                     </template>
                   </Column>
                   <Column field="quantity" header="الكمية" />
@@ -1183,6 +1189,7 @@ onMounted(async () => {
                         size="small"
                         severity="warn"
                         :loading="receivingItemId === item.id"
+                        :disabled="item.returned_quantity > 0"
                         @click="onUnreceiveItem(selectedInvoice, item)"
                       />
                     </template>

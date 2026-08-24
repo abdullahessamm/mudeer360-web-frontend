@@ -81,10 +81,22 @@ const router = createRouter({
           meta: { title: 'فواتير البيع', breadcrumb: 'فواتير البيع' },
         },
         {
+          path: 'sales-returns',
+          name: 'sales-returns',
+          component: () => import('@/modules/sales/SalesReturnsPage.vue'),
+          meta: { title: 'مرتجعات المبيعات', breadcrumb: 'مرتجعات المبيعات' },
+        },
+        {
           path: 'purchases',
           name: 'purchases',
           component: () => import('@/modules/purchases/PurchasesPage.vue'),
           meta: { title: 'فواتير الشراء', breadcrumb: 'فواتير الشراء' },
+        },
+        {
+          path: 'purchase-returns',
+          name: 'purchase-returns',
+          component: () => import('@/modules/purchases/PurchaseReturnsPage.vue'),
+          meta: { title: 'مرتجعات المشتريات', breadcrumb: 'مرتجعات المشتريات' },
         },
         {
           path: 'partners',

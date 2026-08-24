@@ -159,6 +159,7 @@ export interface SaleInvoiceItem {
   is_dispensed?: boolean
   /** After dispense: whether warehouse quantity was reduced for this line */
   stock_deducted?: boolean
+  returned_quantity?: number
 }
 
 export interface SaleInvoiceOtherCost {
@@ -219,6 +220,7 @@ export interface PurchaseInvoiceItem {
   unit_price: number
   total_price?: number
   is_received?: boolean
+  returned_quantity?: number
 }
 
 /** Full purchase invoice (from /api/purchase-invoices) */
@@ -478,4 +480,90 @@ export interface Payroll {
   status: 'pending' | 'paid'
   created_at?: string
   updated_at?: string
+}
+
+// ─── Sales Returns ─────────────────────────────────────────────────────────
+
+export interface SalesReturnItem {
+  id?: number
+  sales_return_id?: number
+  product_id: number
+  product?: Product | null
+  quantity: number
+  price: number
+  discount: number
+  tax: number
+  total: number
+}
+
+export interface SalesReturn {
+  id: number
+  code: string
+  customer_id: number
+  customer?: Customer | null
+  sale_invoice_id: number | null
+  amount: number
+  tax: number
+  discount: number
+  net_amount: number
+  date: string
+  notes?: string | null
+  items: SalesReturnItem[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SalesReturnCreatePayload {
+  customer_id: number
+  sale_invoice_id?: number | null
+  date: string
+  notes?: string | null
+  items: {
+    product_id: number
+    quantity: number
+    price: number
+    discount?: number
+    tax?: number
+  }[]
+}
+
+// ─── Purchase Returns ──────────────────────────────────────────────────────
+
+export interface PurchaseReturnItem {
+  id?: number
+  purchase_return_id?: number
+  product_id: number
+  product?: Product | null
+  product_name?: string
+  product_unit?: string
+  quantity: number
+  unit_price: number
+  total_price: number
+}
+
+export interface PurchaseReturn {
+  id: number
+  code: string
+  supplier_id: number
+  supplier?: Supplier | null
+  purchase_invoice_id: number | null
+  amount: number
+  net_amount: number
+  date: string
+  notes?: string | null
+  items: PurchaseReturnItem[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface PurchaseReturnCreatePayload {
+  supplier_id: number
+  purchase_invoice_id?: number | null
+  date: string
+  notes?: string | null
+  items: {
+    product_id: number
+    quantity: number
+    unit_price: number
+  }[]
 }

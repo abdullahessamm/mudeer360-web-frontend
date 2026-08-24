@@ -336,7 +336,7 @@ async function onUnreceiveAll() {
   if (!store.currentInvoice) return
   try {
     const receivedIds =
-      store.currentInvoice.items?.filter((i) => i.is_received && i.id).map((i) => i.id!) ?? []
+      store.currentInvoice.items?.filter((i) => i.is_received && i.id && !i.returned_quantity).map((i) => i.id!) ?? []
     if (receivedIds.length === 0) return
     await store.unreceive(store.currentInvoice.id, receivedIds)
     showSuccess('تم تراجع استلام الأصناف بنجاح')
@@ -862,6 +862,12 @@ onMounted(async () => {
                     severity="success"
                     class="mr-2"
                   />
+                  <Tag
+                    v-if="data.returned_quantity > 0"
+                    :value="`تم إرجاع: ${data.returned_quantity}`"
+                    severity="danger"
+                    class="mr-2"
+                  />
                 </template>
               </Column>
               <Column field="quantity" header="الكمية" />
@@ -893,6 +899,7 @@ onMounted(async () => {
                     size="small"
                     severity="warn"
                     :loading="receivingItemId === data.id"
+                    :disabled="data.returned_quantity > 0"
                     @click="onUnreceiveItem(data)"
                   />
                 </template>

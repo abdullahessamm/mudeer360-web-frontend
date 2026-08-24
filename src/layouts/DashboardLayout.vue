@@ -33,11 +33,13 @@ const assetsMenuItems = [
 const purchasingMenuItems = [
   { label: 'الموردين', to: '/suppliers', icon: 'pi pi-users' },
   { label: 'فواتير الشراء', to: '/purchases', icon: 'pi pi-truck' },
+  { label: 'مرتجعات المشتريات', to: '/purchase-returns', icon: 'pi pi-arrow-right-arrow-left' },
 ]
 
 const salesMenuItems = [
   { label: 'العملاء', to: '/customers', icon: 'pi pi-user-plus' },
   { label: 'فواتير البيع', to: '/sales', icon: 'pi pi-shopping-cart' },
+  { label: 'مرتجعات المبيعات', to: '/sales-returns', icon: 'pi pi-arrow-left' },
 ]
 
 const accountsMenuItems = [{ label: 'جاري الشركاء', to: '/partners', icon: 'pi pi-briefcase' }]
@@ -63,7 +65,8 @@ const isAssetsSectionActive = computed(
 const isPurchasingSectionActive = computed(
   () =>
     router.currentRoute.value.path.startsWith('/suppliers') ||
-    router.currentRoute.value.path.startsWith('/purchases'),
+    router.currentRoute.value.path.startsWith('/purchases') ||
+    router.currentRoute.value.path.startsWith('/purchase-returns'),
 )
 
 const isSalesSectionActive = computed(
@@ -121,7 +124,7 @@ watch(
   (p) => {
     if (p.startsWith('/product-categories') || p.startsWith('/products')) stockExpanded.value = true
     if (p.startsWith('/asset-categories') || p.startsWith('/assets')) assetsExpanded.value = true
-    if (p.startsWith('/suppliers') || p.startsWith('/purchases')) purchasingExpanded.value = true
+    if (p.startsWith('/suppliers') || p.startsWith('/purchases') || p.startsWith('/purchase-returns')) purchasingExpanded.value = true
     if (p.startsWith('/customers') || p.startsWith('/sales')) salesExpanded.value = true
     if (p.startsWith('/partners')) accountsExpanded.value = true
     if (p.startsWith('/financial')) financialExpanded.value = true

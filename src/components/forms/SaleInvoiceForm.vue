@@ -30,6 +30,7 @@ interface RowItem {
   product_id: number | null
   quantity: number
   unit_price: number
+  returned_quantity: number
 }
 
 interface RowCost {
@@ -87,6 +88,7 @@ watch(
           product_id: it.product_id ?? null,
           quantity: it.quantity ?? 0,
           unit_price: it.unit_price ?? 0,
+          returned_quantity: it.returned_quantity ?? 0,
         }))
       } else {
         rows.value = []
@@ -112,6 +114,7 @@ function addRow() {
     product_id: null,
     quantity: 1,
     unit_price: 0,
+    returned_quantity: 0,
   })
 }
 
@@ -371,8 +374,10 @@ watch(
               option-value="value"
               placeholder="اختر المنتج"
               class="w-full"
+              :disabled="data.returned_quantity > 0"
               @update:model-value="(v: number) => onProductSelect(index, v)"
             />
+            <small v-if="data.returned_quantity > 0" class="text-orange-500 block mt-1">يوجد مرتجع ({{ data.returned_quantity }})</small>
           </template>
         </Column>
         <Column header="الكمية" style="width: 110px">
@@ -383,6 +388,7 @@ watch(
               :min-fraction-digits="0"
               :max-fraction-digits="4"
               class="w-full"
+              :disabled="data.returned_quantity > 0"
             />
           </template>
         </Column>
@@ -394,6 +400,7 @@ watch(
               :min-fraction-digits="0"
               :max-fraction-digits="4"
               class="w-full"
+              :disabled="data.returned_quantity > 0"
             />
           </template>
         </Column>
@@ -403,8 +410,9 @@ watch(
           </template>
         </Column>
         <Column header="" style="width: 50px">
-          <template #body="{ index }">
+          <template #body="{ data, index }">
             <Button
+              v-if="!data.returned_quantity"
               icon="pi pi-trash"
               text
               severity="danger"
