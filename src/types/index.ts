@@ -230,9 +230,13 @@ export interface PurchaseInvoice {
   supplier?: Supplier | null
   invoice_number: string
   type: 'cash' | 'credit'
+  subtotal_amount: number
+  discount_amount: number
+  discount_percentage: number
   total_amount: number
   paid_amount: number
   status: 'paid' | 'partial' | 'unpaid'
+  notes?: string | null
   invoice_date: string
   items: PurchaseInvoiceItem[]
   payments?: InvoicePaymentLine[]
@@ -245,6 +249,9 @@ export interface PurchaseInvoiceCreatePayload {
   supplier_id?: number
   type: 'cash' | 'credit'
   invoice_date: string
+  notes?: string | null
+  discount_amount?: number
+  discount_percentage?: number
   items: { product_id: number; quantity: number; unit_price: number }[]
 }
 

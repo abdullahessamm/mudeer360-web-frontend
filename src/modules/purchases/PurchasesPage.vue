@@ -435,6 +435,9 @@ onMounted(async () => {
   ])
   await applyFilters()
 })
+function getInvoiceDiscountRatio(invoice: PurchaseInvoice) {
+  return invoice.subtotal_amount > 0 ? (invoice.total_amount / invoice.subtotal_amount) : 1
+}
 </script>
 
 <template>
@@ -601,19 +604,19 @@ onMounted(async () => {
           <Column header="استلام">
             <template #body="{ data }">
               <Tag
-                :value="RECEIVE_STATUS_LABELS[getReceiveStats(data.items).status]"
-                :severity="RECEIVE_STATUS_SEVERITY[getReceiveStats(data.items).status]"
+                :value="RECEIVE_STATUS_LABELS[getReceiveStats(data.items, getInvoiceDiscountRatio(data)).status]"
+                :severity="RECEIVE_STATUS_SEVERITY[getReceiveStats(data.items, getInvoiceDiscountRatio(data)).status]"
               />
             </template>
           </Column>
           <Column header="تم الاستلام">
             <template #body="{ data }">
-              {{ formatAmount(getReceiveStats(data.items).receivedAmount) }}
+              {{ formatAmount(getReceiveStats(data.items, getInvoiceDiscountRatio(data)).receivedAmount) }}
             </template>
           </Column>
           <Column header="متبقي الاستلام">
             <template #body="{ data }">
-              {{ formatAmount(getReceiveStats(data.items).remainingAmount) }}
+              {{ formatAmount(getReceiveStats(data.items, getInvoiceDiscountRatio(data)).remainingAmount) }}
             </template>
           </Column>
           <Column header="الإجراءات" style="width: 220px">
@@ -768,9 +771,24 @@ onMounted(async () => {
               />
             </div>
           </div>
+          <div v-if="store.currentInvoice.notes">
+            <span class="text-color-secondary">ملاحظات:</span>
+            {{ store.currentInvoice.notes }}
+          </div>
           <div class="flex gap-4">
+            <div v-if="store.currentInvoice.discount_amount > 0">
+              <span class="text-color-secondary">المجموع الفرعي:</span>
+              {{ formatMoney(store.currentInvoice.subtotal_amount) }}
+            </div>
+            <div v-if="store.currentInvoice.discount_amount > 0">
+              <span class="text-color-secondary">الخصم:</span>
+              -{{ formatMoney(store.currentInvoice.discount_amount) }}
+              <span v-if="store.currentInvoice.discount_percentage > 0" class="text-sm">
+                ({{ store.currentInvoice.discount_percentage }}%)
+              </span>
+            </div>
             <div>
-              <span class="text-color-secondary">الإجمالي:</span>
+              <span class="text-color-secondary">الإجمالي النهائي:</span>
               {{ formatMoney(store.currentInvoice.total_amount) }}
             </div>
             <div>
@@ -789,19 +807,19 @@ onMounted(async () => {
             <div>
               <span class="text-color-secondary">حالة الاستلام:</span>
               <Tag
-                :value="RECEIVE_STATUS_LABELS[getReceiveStats(store.currentInvoice.items).status]"
+                :value="RECEIVE_STATUS_LABELS[getReceiveStats(store.currentInvoice.items, getInvoiceDiscountRatio(store.currentInvoice)).status]"
                 :severity="
-                  RECEIVE_STATUS_SEVERITY[getReceiveStats(store.currentInvoice.items).status]
+                  RECEIVE_STATUS_SEVERITY[getReceiveStats(store.currentInvoice.items, getInvoiceDiscountRatio(store.currentInvoice)).status]
                 "
               />
             </div>
             <div>
-              <span class="text-color-secondary">تم الاستلام:</span>
-              {{ formatAmount(getReceiveStats(store.currentInvoice.items).receivedAmount) }}
+              <span class="text-color-secondary">قيمة المستلم:</span>
+              {{ formatAmount(getReceiveStats(store.currentInvoice.items, getInvoiceDiscountRatio(store.currentInvoice)).receivedAmount) }}
             </div>
             <div>
               <span class="text-color-secondary">متبقي الاستلام:</span>
-              {{ formatAmount(getReceiveStats(store.currentInvoice.items).remainingAmount) }}
+              {{ formatAmount(getReceiveStats(store.currentInvoice.items, getInvoiceDiscountRatio(store.currentInvoice)).remainingAmount) }}
             </div>
           </div>
           <div class="flex gap-2 flex-wrap">

@@ -34,6 +34,9 @@ const form = reactive({
   supplier_id: props.modelValue?.supplier_id ?? null as number | null,
   type: (props.modelValue?.type ?? 'credit') as 'cash' | 'credit',
   invoice_date: props.modelValue?.invoice_date ?? today,
+  notes: props.modelValue?.notes ?? '',
+  discount_amount: props.modelValue?.discount_amount ?? 0,
+  discount_percentage: props.modelValue?.discount_percentage ?? 0,
 })
 
 const datePickerValue = computed({
@@ -50,6 +53,9 @@ watch(
       form.supplier_id = v.supplier_id ?? null
       form.type = (v.type ?? 'credit') as 'cash' | 'credit'
       form.invoice_date = v.invoice_date ?? today
+      form.notes = v.notes ?? ''
+      form.discount_amount = v.discount_amount ?? 0
+      form.discount_percentage = v.discount_percentage ?? 0
       if (v.items?.length) {
         rows.value = v.items.map((it: PurchaseInvoiceItem) => ({
           _rowId: ++rowIdCounter,
@@ -90,9 +96,18 @@ function onProductSelect(index: number, productId: number | null) {
   }
 }
 
-const totalAmount = computed(() =>
+const subtotalAmount = computed(() =>
   rows.value.reduce((sum, r) => sum + r.quantity * r.unit_price, 0),
 )
+
+const finalDiscountAmount = computed(() => {
+  if (form.discount_percentage > 0) {
+    return (subtotalAmount.value * form.discount_percentage) / 100
+  }
+  return form.discount_amount || 0
+})
+
+const totalAmount = computed(() => Math.max(0, subtotalAmount.value - finalDiscountAmount.value))
 
 const validItems = computed(() => {
   return rows.value
@@ -112,6 +127,9 @@ function onSubmit() {
     supplier_id: form.supplier_id ?? undefined,
     type: form.type,
     invoice_date: form.invoice_date,
+    notes: form.notes || undefined,
+    discount_amount: form.discount_amount || undefined,
+    discount_percentage: form.discount_percentage || undefined,
     items: validItems.value,
   })
 }
@@ -168,6 +186,37 @@ watch(
         icon-display="input"
         class="w-full mt-1"
       />
+    </div>
+    <div class="field">
+      <label for="pi-notes">ملاحظات</label>
+      <InputText id="pi-notes" v-model="form.notes" class="w-full mt-1" />
+    </div>
+    <div class="flex flex-column md:flex-row gap-3">
+      <div class="field flex-1">
+        <label for="pi-discount-pct">نسبة الخصم (%)</label>
+        <InputNumber
+          id="pi-discount-pct"
+          v-model="form.discount_percentage"
+          :min="0"
+          :max="100"
+          :min-fraction-digits="0"
+          :max-fraction-digits="2"
+          class="w-full mt-1"
+          @update:modelValue="form.discount_amount = 0"
+        />
+      </div>
+      <div class="field flex-1">
+        <label for="pi-discount-amt">قيمة الخصم</label>
+        <InputNumber
+          id="pi-discount-amt"
+          v-model="form.discount_amount"
+          :min="0"
+          :min-fraction-digits="0"
+          :max-fraction-digits="2"
+          class="w-full mt-1"
+          :disabled="form.discount_percentage > 0"
+        />
+      </div>
     </div>
     <div class="field">
       <div class="flex justify-content-between align-items-center mb-2">
@@ -227,8 +276,21 @@ watch(
       </DataTable>
       <small v-if="!canSubmit && rows.length > 0" class="p-error">يجب إضافة صنف واحد على الأقل بكمية وسعر صحيحين</small>
     </div>
-    <div class="flex justify-content-between align-items-center mt-2">
-      <span class="font-semibold">الإجمالي: {{formatMoney(totalAmount) }}</span>
+    <div class="flex flex-column gap-1 mt-2 mb-4 p-3 bg-gray-50 border-round">
+      <div class="flex justify-content-between">
+        <span>المجموع الفرعي:</span>
+        <span>{{ formatMoney(subtotalAmount) }}</span>
+      </div>
+      <div class="flex justify-content-between text-red-500" v-if="finalDiscountAmount > 0">
+        <span>الخصم:</span>
+        <span>-{{ formatMoney(finalDiscountAmount) }}</span>
+      </div>
+      <div class="flex justify-content-between font-bold text-lg border-top-1 border-gray-300 pt-2 mt-1">
+        <span>الإجمالي النهائي:</span>
+        <span>{{ formatMoney(totalAmount) }}</span>
+      </div>
+    </div>
+    <div class="flex justify-content-end align-items-center mt-2">
       <div class="flex gap-2">
         <Button type="button" label="إلغاء" text @click="onCancel" />
         <Button type="submit" label="حفظ" icon="pi pi-check" :loading="loading" :disabled="!canSubmit" />

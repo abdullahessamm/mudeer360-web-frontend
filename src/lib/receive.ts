@@ -14,14 +14,17 @@ function itemAmount(item: PurchaseInvoiceItem): number {
   return item.total_price ?? item.quantity * item.unit_price
 }
 
-export function getReceiveStats(items: PurchaseInvoiceItem[] | undefined): ReceiveStats {
+export function getReceiveStats(
+  items: PurchaseInvoiceItem[] | undefined,
+  discountRatio: number = 1
+): ReceiveStats {
   const list = items ?? []
   let receivedAmount = 0
   let remainingAmount = 0
   let receivedCount = 0
 
   for (const item of list) {
-    const amt = itemAmount(item)
+    const amt = itemAmount(item) * discountRatio
     if (item.is_received) {
       receivedAmount += amt
       receivedCount++
