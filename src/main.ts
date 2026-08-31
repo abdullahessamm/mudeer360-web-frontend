@@ -40,6 +40,7 @@ import TabPanels from 'primevue/tabpanels'
 import Tabs from 'primevue/tabs'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
+import Ripple from 'primevue/ripple'
 
 import App from './App.vue'
 import router from './router'
@@ -68,6 +69,7 @@ app.use(router)
 app.use(ToastService)
 app.use(ConfirmationService)
 app.use(PrimeVue, {
+  ripple: true,
   locale: { ...ar, dateFormat: 'yy-mm-dd' },
   theme: {
     preset: UTechBluePreset,
@@ -76,6 +78,8 @@ app.use(PrimeVue, {
     },
   },
 })
+
+app.directive('ripple', Ripple)
 
 app.component('Button', Button)
 app.component('Card', Card)
