@@ -1220,6 +1220,20 @@ onMounted(async () => {
                   </Column>
                 </DataTable>
               </div>
+              <div v-if="selectedInvoice.other_costs?.length" class="invoice-details">
+                <h4 class="mt-0 mb-2 text-base">التكاليف الأخرى</h4>
+                <DataTable
+                  :value="selectedInvoice.other_costs"
+                  size="small"
+                  class="p-datatable-sm"
+                  show-gridlines
+                >
+                  <Column field="description" header="الوصف / البيان" />
+                  <Column field="cost" header="التكلفة" style="width: 140px">
+                    <template #body="{ data }">{{ formatAmount(data.cost) }}</template>
+                  </Column>
+                </DataTable>
+              </div>
               <div class="invoice-details">
                 <h4 class="mt-0 mb-2 text-base">الدفعات</h4>
                 <DataTable
@@ -1272,7 +1286,7 @@ onMounted(async () => {
                 <p v-else class="text-color-secondary m-0">لا توجد دفعات</p>
               </div>
               <div
-                v-if="!(selectedInvoice.items?.length || selectedInvoice.payments?.length)"
+                v-if="!(selectedInvoice.items?.length || selectedInvoice.other_costs?.length || selectedInvoice.payments?.length)"
                 class="text-color-secondary text-sm"
               >
                 لا توجد تفاصيل إضافية
@@ -1318,6 +1332,24 @@ onMounted(async () => {
                   </tbody>
                 </table>
                 <p v-else class="text-color-secondary m-0">لا توجد أصناف</p>
+              </section>
+
+              <section v-if="selectedInvoice.other_costs?.length" class="invoice-print-section">
+                <h4 class="invoice-print-h4">التكاليف الأخرى</h4>
+                <table class="invoice-print-table">
+                  <thead>
+                    <tr>
+                      <th>الوصف / البيان</th>
+                      <th style="width: 140px">التكلفة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(cost, idx) in selectedInvoice.other_costs" :key="cost.id ?? idx">
+                      <td>{{ cost.description }}</td>
+                      <td>{{ formatAmount(cost.cost) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </section>
 
               <section class="invoice-print-section">

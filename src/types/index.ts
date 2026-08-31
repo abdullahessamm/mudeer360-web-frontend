@@ -251,6 +251,16 @@ export interface PurchaseInvoiceItem {
   returned_quantity?: number
 }
 
+/** Purchase invoice other cost (shipping, transport, etc.) */
+export interface PurchaseInvoiceOtherCost {
+  id?: number
+  purchase_invoice_id?: number
+  description: string
+  cost: number
+  created_at?: string
+  updated_at?: string
+}
+
 /** Full purchase invoice (from /api/purchase-invoices) */
 export interface PurchaseInvoice {
   id: number
@@ -267,6 +277,7 @@ export interface PurchaseInvoice {
   notes?: string | null
   invoice_date: string
   items: PurchaseInvoiceItem[]
+  other_costs?: PurchaseInvoiceOtherCost[]
   payments?: InvoicePaymentLine[]
   created_at?: string
   updated_at?: string
@@ -280,7 +291,8 @@ export interface PurchaseInvoiceCreatePayload {
   notes?: string | null
   discount_amount?: number
   discount_percentage?: number
-  items: { product_id: number; quantity: number; unit_price: number }[]
+  items?: { product_id: number; quantity: number; unit_price: number }[]
+  other_costs?: { description: string; cost: number }[]
 }
 
 /** Payload for add/update payment (sale: optional balance + cash split; purchase: cash only) */

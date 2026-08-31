@@ -198,6 +198,7 @@ async function openCreate() {
     type: 'credit',
     invoice_date: formatDateLocal(new Date()),
     items: [],
+    other_costs: [],
   }
   invoiceDialogVisible.value = true
 }
@@ -213,6 +214,10 @@ async function openEdit(row: PurchaseInvoice) {
     type: row.type,
     invoice_date: row.invoice_date,
     items: row.items ?? [],
+    other_costs: row.other_costs ?? [],
+    discount_amount: row.discount_amount,
+    discount_percentage: row.discount_percentage,
+    notes: row.notes,
   }
   invoiceDialogVisible.value = true
 }
@@ -924,6 +929,15 @@ function getInvoiceDiscountRatio(invoice: PurchaseInvoice) {
               </Column>
             </DataTable>
           </div>
+          <div v-if="store.currentInvoice.other_costs?.length" class="flex flex-column gap-2">
+            <h4 class="mt-0 mb-2">التكاليف الأخرى</h4>
+            <DataTable :value="store.currentInvoice.other_costs" size="small" class="p-datatable-sm">
+              <Column field="description" header="الوصف / البيان" />
+              <Column field="cost" header="التكلفة" style="width: 140px">
+                <template #body="{ data }">{{ formatMoney(data.cost) }}</template>
+              </Column>
+            </DataTable>
+          </div>
           <div>
             <h4 class="mt-0 mb-2">الدفعات</h4>
             <DataTable
@@ -998,6 +1012,24 @@ function getInvoiceDiscountRatio(invoice: PurchaseInvoice) {
               </tbody>
             </table>
             <p v-else class="text-color-secondary m-0">لا توجد أصناف</p>
+          </section>
+
+          <section v-if="store.currentInvoice.other_costs?.length" class="invoice-print-section">
+            <h4 class="invoice-print-h4">التكاليف الأخرى</h4>
+            <table class="invoice-print-table">
+              <thead>
+                <tr>
+                  <th>الوصف / البيان</th>
+                  <th style="width: 140px">التكلفة</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(cost, idx) in store.currentInvoice.other_costs" :key="cost.id ?? idx">
+                  <td>{{ cost.description }}</td>
+                  <td>{{ formatAmount(cost.cost) }}</td>
+                </tr>
+              </tbody>
+            </table>
           </section>
 
           <section class="invoice-print-section">
