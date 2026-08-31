@@ -81,7 +81,9 @@ export interface StockPeriodReportItem {
   purchase_price: number
   sale_price: number
   opening_quantity: number
+  opening_value?: number
   ending_quantity: number
+  ending_value?: number
   current_quantity: number
   min_quantity: number
 }
@@ -89,7 +91,9 @@ export interface StockPeriodReportItem {
 export interface StockPeriodReportSummary {
   total_products: number
   total_opening_quantity: number
+  total_opening_value?: number
   total_ending_quantity: number
+  total_ending_value?: number
 }
 
 export interface StockPeriodReportPayload {
