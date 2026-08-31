@@ -56,6 +56,21 @@ export const assetRules = {
   },
 }
 
+/** Asset Maintenance - StoreAssetMaintenanceRequest */
+export const assetMaintenanceRules = {
+  cost: {
+    required,
+    numeric,
+    minValue: minValue(0.01),
+  },
+  maintenance_date: {
+    required,
+  },
+  description: {
+    maxLength: maxLength(65535),
+  },
+}
+
 /** Product - StoreProductRequest */
 export const productRules = {
   product_code: {

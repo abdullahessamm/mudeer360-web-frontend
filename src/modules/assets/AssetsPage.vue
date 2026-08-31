@@ -7,8 +7,9 @@ import { useAssetsStore } from '@/stores/assets'
 import { useAssetCategoriesStore } from '@/stores/assetCategories'
 import { useDashboardStore } from '@/stores/dashboard'
 import { formatDateOnly } from '@/lib/date'
-import { assetStatusLabel, ASSET_STATUS_OPTIONS } from '@/lib/assetStatus'
+import { assetStatusLabel, assetStatusSeverity, ASSET_STATUS_OPTIONS } from '@/lib/assetStatus'
 import AssetForm from '@/components/forms/AssetForm.vue'
+import AssetMaintenanceDialog from '@/components/dialogs/AssetMaintenanceDialog.vue'
 import type { Asset } from '@/types'
 import { useFinancialAccountsStore } from '@/stores/financialAccounts'
 import { formatNumber } from '@/lib/format'
@@ -48,7 +49,20 @@ const selectedStatus = ref<string | null>(null)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const editingId = ref<number | null>(null)
-const formModel = ref<(Partial<Asset> & { auto_generate_code?: boolean } & { create_financial_transaction?: boolean; financial_account_id?: number | null }) | null>(null)
+const formModel = ref<
+  | (Partial<Asset> & {
+      auto_generate_code?: boolean
+      create_financial_transaction?: boolean
+      financial_account_id?: number | null
+      create_sale_financial_transaction?: boolean
+      sale_financial_account_id?: number | null
+    })
+  | null
+>(null)
+
+// Maintenance dialog state
+const maintenanceDialogVisible = ref(false)
+const selectedAssetForMaintenance = ref<Asset | null>(null)
 
 const categoryFilterOptions = computed(() => {
   const list = categoriesStore.allCategories.length
@@ -90,6 +104,11 @@ async function openCreate() {
     notes: '',
     create_financial_transaction: false,
     financial_account_id: financialAccountOptions.value[0]?.value ?? null,
+    sale_price: 0,
+    sale_date: undefined,
+    sale_financial_account_id: financialAccountOptions.value[0]?.value ?? null,
+    create_sale_financial_transaction: false,
+    sale_notes: '',
   }
   if (categoriesStore.allCategories.length === 0) {
     await categoriesStore.fetchAllForSelect()
@@ -112,6 +131,12 @@ async function openEdit(row: Asset) {
     notes: row.notes ?? '',
     create_financial_transaction: row.has_financial_transaction,
     financial_account_id: row.financial_account_id ?? financialAccountOptions.value[0]?.value,
+    sale_price: row.sale_price ?? 0,
+    sale_date: row.sale_date ?? undefined,
+    sale_financial_account_id:
+      row.sale_financial_account_id ?? financialAccountOptions.value[0]?.value,
+    create_sale_financial_transaction: row.has_sale_financial_transaction ?? false,
+    sale_notes: row.sale_notes ?? '',
   }
   if (categoriesStore.allCategories.length === 0) {
     await categoriesStore.fetchAllForSelect()
@@ -119,11 +144,18 @@ async function openEdit(row: Asset) {
   dialogVisible.value = true
 }
 
+function openMaintenanceDialog(row: Asset) {
+  selectedAssetForMaintenance.value = row
+  maintenanceDialogVisible.value = true
+}
+
 async function onFormSubmit(
   payload: Partial<Asset> & {
     auto_generate_code?: boolean
     create_financial_transaction?: boolean
     financial_account_id?: number | null
+    create_sale_financial_transaction?: boolean
+    sale_financial_account_id?: number | null
   },
 ) {
   try {
@@ -133,13 +165,7 @@ async function onFormSubmit(
       await store.create(payload as Omit<Asset, 'id'>)
     }
     dialogVisible.value = false
-    await store.fetchPage(
-      store.currentPage,
-      store.perPage,
-      dashboardStore.searchQuery,
-      selectedCategoryId.value,
-      selectedStatus.value,
-    )
+    await refreshList()
   } catch {
     // error shown via toast
   }
@@ -163,18 +189,22 @@ function confirmDelete(row: Asset) {
     accept: async () => {
       try {
         await store.remove(row.id)
-        await store.fetchPage(
-          store.currentPage,
-          store.perPage,
-          dashboardStore.searchQuery,
-          selectedCategoryId.value,
-          selectedStatus.value,
-        )
+        await refreshList()
       } catch {
         // error shown via toast
       }
     },
   })
+}
+
+function refreshList() {
+  return store.fetchPage(
+    store.currentPage,
+    store.perPage,
+    dashboardStore.searchQuery,
+    selectedCategoryId.value,
+    selectedStatus.value,
+  )
 }
 
 function onFilterChange() {
@@ -272,13 +302,46 @@ onMounted(async () => {
             <template #body="{ data }">{{ formatDateOnly(data.purchase_date) || '—' }}</template>
           </Column>
           <Column field="status" header="الحالة">
-            <template #body="{ data }">{{ assetStatusLabel(data.status) }}</template>
+            <template #body="{ data }">
+              <Tag
+                :value="assetStatusLabel(data.status)"
+                :severity="assetStatusSeverity(data.status)"
+                rounded
+              />
+              <div v-if="data.status === 'sold' && data.sale_price" class="text-xs text-color-secondary mt-1">
+                سعر البيع: {{ formatPrice(data.sale_price) }}
+              </div>
+            </template>
+          </Column>
+          <Column field="total_maintenance_cost" header="الصيانة">
+            <template #body="{ data }">
+              <Button
+                :label="data.total_maintenance_cost ? formatPrice(data.total_maintenance_cost) : '0'"
+                icon="pi pi-wrench"
+                text
+                size="small"
+                :badge="data.maintenances_count ? String(data.maintenances_count) : undefined"
+                badge-class="p-badge-info"
+                class="p-button-secondary font-bold text-sm"
+                v-tooltip.top="'عرض وإدارة سجل الصيانة'"
+                @click="openMaintenanceDialog(data)"
+              />
+            </template>
           </Column>
           <Column field="location" header="الموقع">
             <template #body="{ data }">{{ data.location?.trim() ? data.location : '—' }}</template>
           </Column>
-          <Column header="الإجراءات" style="width: 200px">
+          <Column header="الإجراءات" style="width: 220px">
             <template #body="{ data }">
+              <Button
+                icon="pi pi-wrench"
+                text
+                rounded
+                size="small"
+                class="p-button-info ml-1"
+                v-tooltip.top="'سجل الصيانة'"
+                @click="openMaintenanceDialog(data)"
+              />
               <Button
                 label="تعديل"
                 icon="pi pi-pencil"
@@ -326,11 +389,12 @@ onMounted(async () => {
         </div>
       </template>
     </Card>
+
     <Dialog
       v-model:visible="dialogVisible"
       :header="formTitle"
       :modal="true"
-      :style="{ width: '100%', maxWidth: '600px', margin: '0 20px' }"
+      :style="{ width: '100%', maxWidth: '650px', margin: '0 20px' }"
       @hide="dialogVisible = false"
     >
       <AssetForm
@@ -345,5 +409,13 @@ onMounted(async () => {
         @cancel="onFormCancel"
       />
     </Dialog>
+
+    <!-- Asset Maintenance Dialog -->
+    <AssetMaintenanceDialog
+      v-model:visible="maintenanceDialogVisible"
+      :asset="selectedAssetForMaintenance"
+      :financial-account-options="financialAccountOptions"
+      @updated="refreshList"
+    />
   </div>
 </template>

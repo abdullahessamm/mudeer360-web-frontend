@@ -7,7 +7,14 @@ import { ASSET_STATUS_OPTIONS } from '@/lib/assetStatus'
 import type { Asset, AssetStatusValue } from '@/types'
 
 const props = defineProps<{
-  modelValue?: Partial<Asset & { create_financial_transaction: boolean; financial_account_id: number | null }> | null
+  modelValue?: Partial<
+    Asset & {
+      create_financial_transaction?: boolean
+      financial_account_id?: number | null
+      create_sale_financial_transaction?: boolean
+      sale_financial_account_id?: number | null
+    }
+  > | null
   categoryOptions: { label: string; value: number }[]
   financialAccountOptions: { label: string; value: number }[]
   loading?: boolean
@@ -19,8 +26,10 @@ const emit = defineEmits<{
     payload: Partial<
       Asset & {
         auto_generate_code?: boolean
-        create_financial_transaction: boolean
-        financial_account_id?: number
+        create_financial_transaction?: boolean
+        financial_account_id?: number | null
+        create_sale_financial_transaction?: boolean
+        sale_financial_account_id?: number | null
       }
     >,
   ]
@@ -31,8 +40,8 @@ const today = formatDateLocal(new Date())
 
 const form = reactive({
   code: props.modelValue?.code ?? '',
-  auto_generate_code: (props.modelValue as { auto_generate_code?: boolean } | undefined)
-    ?.auto_generate_code ?? true,
+  auto_generate_code:
+    (props.modelValue as { auto_generate_code?: boolean } | undefined)?.auto_generate_code ?? true,
   name: props.modelValue?.name ?? '',
   asset_category_id: props.modelValue?.asset_category_id ?? (null as number | null),
   purchase_price: props.modelValue?.purchase_price ?? 0,
@@ -44,7 +53,16 @@ const form = reactive({
   notes: props.modelValue?.notes ?? '',
   create_financial_transaction: props.modelValue?.create_financial_transaction ?? false,
   financial_account_id: props.modelValue?.financial_account_id ?? (null as number | null),
-});
+
+  // Sale fields
+  sale_price: props.modelValue?.sale_price ?? 0,
+  sale_date: props.modelValue?.sale_date ? formatDateOnly(props.modelValue.sale_date) : today,
+  create_sale_financial_transaction:
+    props.modelValue?.has_sale_financial_transaction ??
+    (props.modelValue?.sale_financial_account_id != null),
+  sale_financial_account_id: props.modelValue?.sale_financial_account_id ?? (null as number | null),
+  sale_notes: props.modelValue?.sale_notes ?? '',
+})
 
 function syncFromModel(v: NonNullable<typeof props.modelValue>) {
   form.code = v.code ?? ''
@@ -60,6 +78,13 @@ function syncFromModel(v: NonNullable<typeof props.modelValue>) {
   form.notes = v.notes ?? ''
   form.create_financial_transaction = v.create_financial_transaction ?? false
   form.financial_account_id = v.financial_account_id ?? null
+
+  form.sale_price = v.sale_price ?? 0
+  form.sale_date = v.sale_date ? formatDateOnly(v.sale_date) : today
+  form.create_sale_financial_transaction =
+    v.has_sale_financial_transaction ?? (v.sale_financial_account_id != null)
+  form.sale_financial_account_id = v.sale_financial_account_id ?? null
+  form.sale_notes = v.sale_notes ?? ''
 }
 
 watch(
@@ -73,9 +98,16 @@ watch(
 const rules = assetRules
 const v$ = useVuelidate(rules, form)
 
+const isSold = computed(() => form.status === 'sold')
+
 const invalid = computed(() => {
   if (v$.value.$invalid) return true
   if (form.create_financial_transaction && !form.financial_account_id) return true
+  if (isSold.value) {
+    if (form.sale_price == null || form.sale_price < 0) return true
+    if (!form.sale_date) return true
+    if (form.create_sale_financial_transaction && !form.sale_financial_account_id) return true
+  }
   return false
 })
 
@@ -86,6 +118,13 @@ const datePickerValue = computed({
   },
 })
 
+const saleDatePickerValue = computed({
+  get: () => (form.sale_date ? new Date(form.sale_date + 'T12:00:00') : null),
+  set: (d: Date | null) => {
+    form.sale_date = d ? formatDateLocal(d) : today
+  },
+})
+
 async function onSubmit() {
   v$.value.$touch()
   if (invalid.value) return
@@ -93,6 +132,7 @@ async function onSubmit() {
     auto_generate_code?: boolean
     create_financial_transaction: boolean
     financial_account_id?: number
+    sale_financial_account_id?: number | null
   } = {
     name: form.name.trim(),
     asset_category_id: form.asset_category_id,
@@ -106,6 +146,18 @@ async function onSubmit() {
   if (form.create_financial_transaction && form.financial_account_id != null) {
     payload.financial_account_id = form.financial_account_id
   }
+
+  if (isSold.value) {
+    payload.sale_price = form.sale_price
+    payload.sale_date = form.sale_date
+    payload.sale_notes = form.sale_notes?.trim() || undefined
+    if (form.create_sale_financial_transaction && form.sale_financial_account_id != null) {
+      payload.sale_financial_account_id = form.sale_financial_account_id
+    } else {
+      payload.sale_financial_account_id = null
+    }
+  }
+
   if (form.auto_generate_code) {
     payload.auto_generate_code = true
   } else {
@@ -158,6 +210,7 @@ function errorMsg(field: keyof typeof form) {
       </small>
       <small v-if="v$.code?.$error" class="p-error">{{ errorMsg('code') }}</small>
     </div>
+
     <div class="field">
       <label for="a-name">الاسم <span class="text-red-500">*</span></label>
       <InputText
@@ -170,6 +223,7 @@ function errorMsg(field: keyof typeof form) {
       />
       <small v-if="v$.name.$error" class="p-error">{{ errorMsg('name') }}</small>
     </div>
+
     <div class="field">
       <label for="a-cat">فئة الأصل</label>
       <Select
@@ -183,6 +237,7 @@ function errorMsg(field: keyof typeof form) {
         show-clear
       />
     </div>
+
     <div class="field">
       <label for="a-price">سعر الشراء <span class="text-red-500">*</span></label>
       <InputNumber
@@ -199,6 +254,7 @@ function errorMsg(field: keyof typeof form) {
         errorMsg('purchase_price')
       }}</small>
     </div>
+
     <div class="field">
       <label for="a-date">تاريخ الشراء <span class="text-red-500">*</span></label>
       <DatePicker
@@ -213,16 +269,18 @@ function errorMsg(field: keyof typeof form) {
       />
       <small v-if="v$.purchase_date.$error" class="p-error">{{ errorMsg('purchase_date') }}</small>
     </div>
+
     <div class="field flex justify-content-start gap-2">
       <Checkbox
         input-id="a-create-ft"
         v-model="form.create_financial_transaction"
         :binary="true"
       />
-      <label for="a-create-ft">إنشاء حركة مالية</label>
+      <label for="a-create-ft" class="cursor-pointer">إنشاء حركة مالية لمصروف الشراء</label>
     </div>
+
     <div class="field" v-if="form.create_financial_transaction">
-      <label for="a-account">الحساب المالي <span class="text-red-500">*</span></label>
+      <label for="a-account">الحساب المالي للشراء <span class="text-red-500">*</span></label>
       <Select
         id="a-account"
         v-model="form.financial_account_id"
@@ -243,6 +301,7 @@ function errorMsg(field: keyof typeof form) {
         الحقل مطلوب
       </small>
     </div>
+
     <div class="field">
       <label for="a-status">الحالة <span class="text-red-500">*</span></label>
       <Select
@@ -258,6 +317,92 @@ function errorMsg(field: keyof typeof form) {
       />
       <small v-if="v$.status.$error" class="p-error">{{ errorMsg('status') }}</small>
     </div>
+
+    <!-- Sold Status Details Section -->
+    <div
+      v-if="isSold"
+      class="p-3 border-round border-1 border-primary-300 surface-ground flex flex-column gap-3 mb-2"
+    >
+      <div class="flex align-items-center gap-2 text-primary font-semibold">
+        <i class="pi pi-dollar"></i>
+        <span>بيانات بيع الأصل</span>
+      </div>
+
+      <div class="field m-0">
+        <label for="a-sale-price">سعر البيع <span class="text-red-500">*</span></label>
+        <InputNumber
+          id="a-sale-price"
+          v-model="form.sale_price"
+          class="w-full mt-1"
+          :class="{ 'p-invalid': isSold && (form.sale_price == null || form.sale_price < 0) }"
+          :min="0"
+          :min-fraction-digits="0"
+          :max-fraction-digits="2"
+          placeholder="سعر بيع الأصل"
+        />
+        <small v-if="isSold && (form.sale_price == null || form.sale_price < 0)" class="p-error">
+          سعر البيع مطلوب
+        </small>
+      </div>
+
+      <div class="field m-0">
+        <label for="a-sale-date">تاريخ البيع <span class="text-red-500">*</span></label>
+        <DatePicker
+          id="a-sale-date"
+          v-model="saleDatePickerValue"
+          date-format="yy-mm-dd"
+          show-icon
+          icon-display="input"
+          class="w-full mt-1"
+          :class="{ 'p-invalid': isSold && !form.sale_date }"
+        />
+        <small v-if="isSold && !form.sale_date" class="p-error">تاريخ البيع مطلوب</small>
+      </div>
+
+      <div class="field flex justify-content-start gap-2 m-0">
+        <Checkbox
+          input-id="a-create-sale-ft"
+          v-model="form.create_sale_financial_transaction"
+          :binary="true"
+        />
+        <label for="a-create-sale-ft" class="cursor-pointer">إيداع سعر البيع في حساب مالي</label>
+      </div>
+
+      <div class="field m-0" v-if="form.create_sale_financial_transaction">
+        <label for="a-sale-account">حساب إيداع الإيراد <span class="text-red-500">*</span></label>
+        <Select
+          id="a-sale-account"
+          v-model="form.sale_financial_account_id"
+          :options="financialAccountOptions"
+          option-label="label"
+          option-value="value"
+          placeholder="اختر الحساب المالي للإيداع"
+          class="w-full mt-1"
+          :class="{
+            'p-invalid':
+              form.create_sale_financial_transaction && !form.sale_financial_account_id,
+          }"
+        />
+        <small
+          v-if="form.create_sale_financial_transaction && !form.sale_financial_account_id"
+          class="p-error"
+        >
+          يرجى اختيار الحساب المالي لإيداع سعر البيع
+        </small>
+      </div>
+
+      <div class="field m-0">
+        <label for="a-sale-notes">ملاحظات البيع</label>
+        <InputText
+          id="a-sale-notes"
+          v-model="form.sale_notes"
+          class="w-full mt-1"
+          placeholder="مثال: تم البيع للمشتري فلان..."
+          maxlength="65535"
+        />
+      </div>
+    </div>
+
     <div class="field">
       <label for="a-loc">الموقع</label>
       <InputText
@@ -271,6 +416,7 @@ function errorMsg(field: keyof typeof form) {
       />
       <small v-if="v$.location?.$error" class="p-error">{{ errorMsg('location') }}</small>
     </div>
+
     <div class="field">
       <label for="a-notes">ملاحظات</label>
       <Textarea
@@ -284,6 +430,7 @@ function errorMsg(field: keyof typeof form) {
       />
       <small v-if="v$.notes?.$error" class="p-error">{{ errorMsg('notes') }}</small>
     </div>
+
     <div class="flex justify-content-end gap-2 mt-2">
       <Button type="button" label="إلغاء" text @click="onCancel" />
       <Button type="submit" label="حفظ" icon="pi pi-check" :loading="loading" :disabled="invalid" />

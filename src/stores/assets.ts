@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient } from '@/api/axios'
 import { unwrapPayload, parsePaginatedResponse, getErrorMessage } from '@/api/utils'
-import type { Asset } from '@/types'
+import type { Asset, AssetMaintenance } from '@/types'
 import type { PaginatedPayload } from '@/types'
 
 export type AssetWritePayload = Partial<Asset> & {
@@ -26,7 +26,9 @@ export interface FixedAssetsSummary {
 }
 
 function summarizeFixedAssets(assets: Asset[]): FixedAssetsSummary {
-  const active = assets.filter((a) => a.status !== 'excluded')
+  const active = assets.filter(
+    (a) => a.status !== 'excluded' && a.status !== 'scrapped' && a.status !== 'sold',
+  )
   const map = new Map<string, FixedAssetsCategoryRow>()
 
   for (const a of active) {
@@ -115,6 +117,17 @@ export const useAssetsStore = defineStore('assets', () => {
       payload.financial_account_id = asset.financial_account_id
     }
 
+    if (asset.status === 'sold') {
+      payload.sale_price = asset.sale_price ?? 0
+      if (asset.sale_date) payload.sale_date = asset.sale_date
+      if (asset.sale_financial_account_id != null) {
+        payload.sale_financial_account_id = asset.sale_financial_account_id
+      }
+      if (asset.sale_notes?.trim()) {
+        payload.sale_notes = asset.sale_notes.trim()
+      }
+    }
+
     if (asset.auto_generate_code) {
       payload.auto_generate_code = true
     } else {
@@ -174,6 +187,79 @@ export const useAssetsStore = defineStore('assets', () => {
     }
   }
 
+  // ─── Maintenances ────────────────────────────────────────────────────────
+  async function fetchMaintenances(assetId: number): Promise<AssetMaintenance[]> {
+    try {
+      const { data } = await apiClient.get('/api/asset-maintenances', {
+        params: { asset_id: assetId, all: 1 },
+      })
+      return (unwrapPayload<AssetMaintenance[]>(data) ?? []) as AssetMaintenance[]
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل تحميل سجل الصيانة')
+      throw e
+    }
+  }
+
+  async function createMaintenance(payload: {
+    asset_id: number
+    cost: number
+    maintenance_date: string
+    financial_account_id?: number | null
+    description?: string | null
+  }): Promise<AssetMaintenance> {
+    try {
+      const { data } = await apiClient.post('/api/asset-maintenances', payload)
+      const created = unwrapPayload<AssetMaintenance>(data)
+      // Update local asset maintenance stats
+      const asset = items.value.find((a) => a.id === payload.asset_id)
+      if (asset) {
+        asset.total_maintenance_cost = (asset.total_maintenance_cost ?? 0) + Number(payload.cost)
+        asset.maintenances_count = (asset.maintenances_count ?? 0) + 1
+      }
+      return created
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل تسجيل عملية الصيانة')
+      throw e
+    }
+  }
+
+  async function updateMaintenance(
+    id: number,
+    payload: Partial<{
+      asset_id: number
+      cost: number
+      maintenance_date: string
+      financial_account_id?: number | null
+      description?: string | null
+    }>,
+  ): Promise<AssetMaintenance> {
+    try {
+      const { data } = await apiClient.put(`/api/asset-maintenances/${id}`, payload)
+      return unwrapPayload<AssetMaintenance>(data)
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل تعديل عملية الصيانة')
+      throw e
+    }
+  }
+
+  async function deleteMaintenance(id: number, assetId?: number, cost?: number): Promise<void> {
+    try {
+      await apiClient.delete(`/api/asset-maintenances/${id}`)
+      if (assetId != null) {
+        const asset = items.value.find((a) => a.id === assetId)
+        if (asset) {
+          if (cost != null) {
+            asset.total_maintenance_cost = Math.max(0, (asset.total_maintenance_cost ?? 0) - cost)
+          }
+          asset.maintenances_count = Math.max(0, (asset.maintenances_count ?? 1) - 1)
+        }
+      }
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل حذف عملية الصيانة')
+      throw e
+    }
+  }
+
   const byId = computed(() => (id: number) => items.value.find((x) => x.id === id))
 
   /** All assets from the module (all pages). Does not toggle list loading. */
@@ -217,6 +303,10 @@ export const useAssetsStore = defineStore('assets', () => {
     create,
     update,
     remove,
+    fetchMaintenances,
+    createMaintenance,
+    updateMaintenance,
+    deleteMaintenance,
     byId,
     fetchAllForReport,
     getFixedAssetsSummary,

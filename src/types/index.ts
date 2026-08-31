@@ -16,11 +16,26 @@ export type AssetStatusValue =
   | 'working'
   | 'disabled'
   | 'under_maintenance'
+  | 'scrapped'
   | 'excluded'
+  | 'sold'
 
 export interface AssetCategory {
   id: number
   name: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface AssetMaintenance {
+  id: number
+  asset_id: number
+  cost: number
+  maintenance_date: string
+  financial_account_id?: number | null
+  financial_account?: { id: number; name: string } | null
+  description?: string | null
+  created_by?: number | null
   created_at?: string
   updated_at?: string
 }
@@ -38,6 +53,15 @@ export interface Asset {
   status: AssetStatusValue | string
   location?: string | null
   notes?: string | null
+  sale_price?: number | null
+  sale_date?: string | null
+  sale_financial_account_id?: number | null
+  sale_financial_account?: { id: number; name: string } | null
+  sale_notes?: string | null
+  has_sale_financial_transaction?: boolean
+  total_maintenance_cost?: number
+  maintenances_count?: number
+  maintenances?: AssetMaintenance[]
   created_at?: string
   updated_at?: string
 }
@@ -373,6 +397,9 @@ export type FinancialExpenseType =
   | 'employee'
   | 'customer_balance'
   | 'supplier_balance'
+  | 'partner_withdraw'
+  | 'asset'
+  | 'asset_maintenance'
   | 'rent'
   | 'utilities'
   | 'supplies'
@@ -385,6 +412,8 @@ export type FinancialIncomeType =
   | 'sale_invoice'
   | 'customer_balance'
   | 'supplier_balance'
+  | 'partner_deposit'
+  | 'asset_sale'
   | 'retail'
   | 'services'
   | 'wholesale'
