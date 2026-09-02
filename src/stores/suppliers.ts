@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient } from '@/api/axios'
 import { unwrapPayload, parsePaginatedResponse, getErrorMessage } from '@/api/utils'
-import type { Supplier, SupplierWithInvoices, SupplierBalanceTransaction, BulkPaymentPayload } from '@/types'
+import type { Supplier, SupplierWithInvoices, SupplierBalanceTransaction, BulkPaymentPayload, BulkDiscountPayload } from '@/types'
 import type { PaginatedPayload } from '@/types'
 
 export const useSuppliersStore = defineStore('suppliers', () => {
@@ -251,6 +251,25 @@ export const useSuppliersStore = defineStore('suppliers', () => {
     }
   }
 
+  async function bulkDiscount(id: number, payload: BulkDiscountPayload): Promise<Supplier> {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.post(`/api/suppliers/${id}/bulk-discount`, payload)
+      const updated = unwrapPayload<Supplier>(data)
+      const idx = items.value.findIndex((s) => s.id === id)
+      if (idx !== -1) items.value[idx] = updated
+      const ai = allSuppliers.value.findIndex((s) => s.id === id)
+      if (ai !== -1) allSuppliers.value[ai] = updated
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل تطبيق الخصم الإجمالي')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearError() {
     error.value = null
   }
@@ -275,6 +294,7 @@ export const useSuppliersStore = defineStore('suppliers', () => {
     withdrawBalance,
     setInitialBalance,
     bulkPayment,
+    bulkDiscount,
     fetchBalanceTransactions,
     clearError,
   }

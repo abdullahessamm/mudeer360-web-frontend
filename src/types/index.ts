@@ -357,6 +357,12 @@ export interface BulkPaymentPayload {
   description?: string
 }
 
+export interface BulkDiscountPayload {
+  amount: number
+  distribution_method?: 'proportional' | 'oldest_first'
+  description?: string
+}
+
 export interface Customer {
   id: number
   name: string
