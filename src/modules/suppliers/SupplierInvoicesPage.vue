@@ -57,8 +57,22 @@ const chargeDialogVisible = ref(false)
 const withdrawDialogVisible = ref(false)
 const initialBalanceDialogVisible = ref(false)
 const balanceHistoryDialogVisible = ref(false)
+const bulkPaymentDialogVisible = ref(false)
+const bulkPaymentSubmitting = ref(false)
 
 // Forms data refs
+const bulkPaymentForm = ref({
+  amount: 0,
+  date: formatDateLocal(new Date()),
+  financial_account_id: null as number | null,
+  description: '',
+})
+
+const totalSupplierUnpaidDues = computed(() => {
+  const list = supplier.value?.purchase_invoices ?? []
+  return list.reduce((sum, inv) => sum + Math.max(0, inv.total_amount - inv.paid_amount), 0)
+})
+
 const chargeForm = ref({
   amount: 0,
   date: formatDateLocal(new Date()),
@@ -250,6 +264,84 @@ async function loadBalanceHistory(page = 1) {
 
 function onBalanceTxPage(e: { page: number; first: number; rows: number }) {
   loadBalanceHistory(e.page + 1)
+}
+
+const bulkPaymentPreview = computed(() => {
+  const amt = bulkPaymentForm.value.amount || 0
+  const dues = totalSupplierUnpaidDues.value
+
+  if (dues <= 0) {
+    return {
+      title: 'إيداع كامل المبلغ في رصيد المورد',
+      message: `لا توجد فواتير غير مدفوعة حالياً للمورد. سيتم إضافة كامل المبلغ (${formatMoney(amt)}) كرصيد دائن للمورد.`,
+      boxClass: 'bg-blue-50 text-blue-900 border-1 border-blue-200',
+      icon: 'pi pi-info-circle text-blue-600',
+    }
+  }
+
+  if (amt > dues) {
+    const residual = amt - dues
+    return {
+      title: 'سداد كامل الفواتير + إضافة الفائض للرصيد',
+      message: `سيتم سداد كامل الفواتير المتبقية بمبلغ ${formatMoney(dues)}، وإضافة المبلغ المتبقي (${formatMoney(residual)}) إلى رصيد المورد كدفعة مقدمة.`,
+      boxClass: 'bg-green-50 text-green-900 border-1 border-green-200',
+      icon: 'pi pi-check-circle text-green-600',
+    }
+  }
+
+  return {
+    title: 'تسوية جزئية لأقدم الفواتير',
+    message: `سيتم توزيع المبلغ (${formatMoney(amt)}) لسداد أقدم الفواتير غير المدفوعة أو المدفوعة جزئياً بالترتيب.`,
+    boxClass: 'bg-amber-50 text-amber-900 border-1 border-amber-200',
+    icon: 'pi pi-info-circle text-amber-600',
+  }
+})
+
+function openBulkPaymentDialog() {
+  bulkPaymentForm.value = {
+    amount: totalSupplierUnpaidDues.value > 0 ? totalSupplierUnpaidDues.value : 0,
+    date: formatDateLocal(new Date()),
+    financial_account_id: accountOptions.value[0]?.value ?? null,
+    description: '',
+  }
+  bulkPaymentDialogVisible.value = true
+}
+
+function setBulkPaymentDate(v: Date | Date[] | (Date | null)[] | null | undefined) {
+  const raw = Array.isArray(v) ? v[0] : v
+  const d = raw instanceof Date ? raw : new Date()
+  bulkPaymentForm.value.date = formatDateLocal(d)
+}
+
+async function onBulkPaymentSubmit() {
+  if (!supplier.value) return
+  if (bulkPaymentForm.value.amount <= 0) {
+    showError('يرجى إدخال مبلغ صحيح أكبر من الصفر')
+    return
+  }
+  if (!bulkPaymentForm.value.financial_account_id) {
+    showError('يرجى اختيار الحساب المالي')
+    return
+  }
+  bulkPaymentSubmitting.value = true
+  try {
+    await store.bulkPayment(supplier.value.id, {
+      amount: bulkPaymentForm.value.amount,
+      financial_account_id: bulkPaymentForm.value.financial_account_id,
+      date: bulkPaymentForm.value.date,
+      description: bulkPaymentForm.value.description || undefined,
+    })
+    showSuccess('تم سداد الفواتير وإجراء التسوية بنجاح')
+    bulkPaymentDialogVisible.value = false
+    await refetchSupplier()
+    if (balanceHistoryDialogVisible.value) {
+      await loadBalanceHistory(balanceTxMeta.value?.current_page ?? 1)
+    }
+  } catch {
+    // toast handled by store/watch
+  } finally {
+    bulkPaymentSubmitting.value = false
+  }
 }
 
 const filters = ref({
@@ -749,7 +841,16 @@ onMounted(async () => {
           @click="exportToExcel"
         />
       </div>
-      <Button v-if="supplier" label="إضافة فاتورة" icon="pi pi-plus" @click="openCreateInvoice" />
+      <div class="flex align-items-center gap-2">
+        <Button
+          v-if="supplier"
+          label="الدفع الإجمالي"
+          icon="pi pi-money-bill"
+          severity="success"
+          @click="openBulkPaymentDialog"
+        />
+        <Button v-if="supplier" label="إضافة فاتورة" icon="pi pi-plus" @click="openCreateInvoice" />
+      </div>
     </div>
 
     <div v-if="supplier" class="flex flex-wrap gap-3 mb-4">
@@ -758,6 +859,13 @@ onMounted(async () => {
           <div class="text-color-secondary text-sm mb-1">رصيد المورد</div>
           <div class="text-xl font-bold text-primary">{{ formatBalance(supplier.balance) }}</div>
           <div class="flex flex-wrap gap-2 mt-2">
+            <Button
+              label="الدفع الإجمالي"
+              icon="pi pi-money-bill"
+              size="small"
+              severity="success"
+              @click="openBulkPaymentDialog"
+            />
             <Button
               label="شحن رصيد"
               icon="pi pi-wallet"
@@ -1434,6 +1542,101 @@ onMounted(async () => {
         @submit="onPaymentFormSubmit"
         @cancel="onPaymentFormCancel"
       />
+    </Dialog>
+
+    <!-- Bulk Payment Dialog -->
+    <Dialog
+      v-model:visible="bulkPaymentDialogVisible"
+      header="الدفع الإجمالي لتسوية الفواتير"
+      :modal="true"
+      :style="{ width: '100%', maxWidth: '520px', margin: '0 20px' }"
+      @hide="bulkPaymentDialogVisible = false"
+    >
+      <div v-if="bulkPaymentDialogVisible" class="flex flex-column gap-3">
+        <!-- Summary Alert / Info Box -->
+        <div class="surface-ground p-3 border-round border-1 surface-border">
+          <div class="flex justify-content-between align-items-center mb-2">
+            <span class="text-color-secondary text-sm font-medium">إجمالي المتبقي على الفواتير:</span>
+            <span class="font-bold text-lg" :class="totalSupplierUnpaidDues > 0 ? 'text-orange-600' : 'text-green-600'">
+              {{ formatAmount(totalSupplierUnpaidDues) }}
+            </span>
+          </div>
+          <div class="flex justify-content-between align-items-center">
+            <span class="text-color-secondary text-sm font-medium">رصيد المورد الحالي:</span>
+            <span class="font-bold text-sm text-primary">
+              {{ formatBalance(supplier?.balance) }}
+            </span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">المبلغ المدفوع <span class="text-red-500">*</span></label>
+          <InputNumber
+            v-model="bulkPaymentForm.amount"
+            :min="0.01"
+            :min-fraction-digits="0"
+            :max-fraction-digits="2"
+            class="w-full mt-1"
+            placeholder="أدخل المبلغ الإجمالي"
+          />
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">الحساب المالي (الخزينة / الحساب البنكي) <span class="text-red-500">*</span></label>
+          <Select
+            v-model="bulkPaymentForm.financial_account_id"
+            :options="accountOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="اختر الحساب المالي"
+            class="w-full mt-1"
+          />
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">تاريخ الدفع <span class="text-red-500">*</span></label>
+          <DatePicker
+            :model-value="bulkPaymentForm.date ? new Date(bulkPaymentForm.date + 'T12:00:00') : null"
+            date-format="yy-mm-dd"
+            show-icon
+            class="w-full mt-1"
+            @update:model-value="setBulkPaymentDate"
+          />
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">البيان / ملاحظات</label>
+          <Textarea
+            v-model="bulkPaymentForm.description"
+            class="w-full mt-1"
+            rows="2"
+            placeholder="مثال: سداد مجمع لفواتير المورد"
+          />
+        </div>
+
+        <!-- Dynamic Allocation Preview -->
+        <div v-if="bulkPaymentForm.amount > 0" class="border-round p-3 text-sm" :class="bulkPaymentPreview.boxClass">
+          <div class="flex align-items-center gap-2 font-semibold mb-1">
+            <i :class="bulkPaymentPreview.icon"></i>
+            <span>{{ bulkPaymentPreview.title }}</span>
+          </div>
+          <p class="m-0 line-height-3">
+            {{ bulkPaymentPreview.message }}
+          </p>
+        </div>
+
+        <div class="flex justify-content-end gap-2 mt-2">
+          <Button label="إلغاء" text severity="secondary" @click="bulkPaymentDialogVisible = false" />
+          <Button
+            label="تأكيد الدفع والتسوية"
+            icon="pi pi-check"
+            severity="success"
+            :loading="bulkPaymentSubmitting"
+            :disabled="bulkPaymentForm.amount <= 0 || !bulkPaymentForm.financial_account_id"
+            @click="onBulkPaymentSubmit"
+          />
+        </div>
+      </div>
     </Dialog>
 
     <!-- Charge Balance Dialog -->

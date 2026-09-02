@@ -350,6 +350,13 @@ export interface SupplierWithInvoices extends Supplier {
   summary?: SupplierSummary
 }
 
+export interface BulkPaymentPayload {
+  amount: number
+  financial_account_id: number
+  date: string
+  description?: string
+}
+
 export interface Customer {
   id: number
   name: string
