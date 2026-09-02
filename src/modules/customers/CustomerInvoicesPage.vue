@@ -1132,20 +1132,6 @@ onMounted(async () => {
           <div class="text-xl font-bold text-primary">{{ formatBalance(customer.balance) }}</div>
           <div class="flex flex-wrap gap-2 mt-2">
             <Button
-              label="الدفع الإجمالي"
-              icon="pi pi-money-bill"
-              size="small"
-              severity="success"
-              @click="openBulkPaymentDialog"
-            />
-            <Button
-              label="الخصم الإجمالي"
-              icon="pi pi-percentage"
-              size="small"
-              severity="warn"
-              @click="openBulkDiscountDialog"
-            />
-            <Button
               label="شحن رصيد"
               icon="pi pi-wallet"
               size="small"
