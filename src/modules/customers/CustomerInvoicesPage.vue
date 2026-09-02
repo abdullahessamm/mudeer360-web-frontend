@@ -58,6 +58,39 @@ const issuedAtLabel = computed(() =>
   formatIssuedAt(issuedAtTimestamp.value),
 )
 
+const bulkPaymentDialogVisible = ref(false)
+const bulkPaymentSubmitting = ref(false)
+const bulkDiscountDialogVisible = ref(false)
+const bulkDiscountSubmitting = ref(false)
+
+const bulkPaymentForm = ref({
+  amount: 0,
+  date: formatDateLocal(new Date()),
+  financial_account_id: null as number | null,
+  description: '',
+})
+
+const bulkDiscountForm = ref({
+  amount: 0,
+  distribution_method: 'proportional' as 'proportional' | 'oldest_first',
+  description: '',
+})
+
+const distributionMethodOptions = [
+  { label: 'توزيع نسبي حسب المتبقي', value: 'proportional' },
+  { label: 'الأقدم أولاً', value: 'oldest_first' },
+]
+
+const totalCustomerUnpaidDues = computed(() => {
+  const list = customer.value?.invoices ?? []
+  return list.reduce((sum, inv) => sum + Math.max(0, inv.total_amount - inv.paid_amount), 0)
+})
+
+const unpaidAndPartialInvoices = computed(() => {
+  const list = customer.value?.invoices ?? []
+  return list.filter((inv) => Math.max(0, inv.total_amount - inv.paid_amount) > 0.0001)
+})
+
 const chargeDialogVisible = ref(false)
 const chargeForm = ref({
   amount: 0,
@@ -369,6 +402,202 @@ async function loadBalanceHistory(page = 1) {
 
 function onBalanceTxPage(e: { page: number; first: number; rows: number }) {
   loadBalanceHistory(e.page + 1)
+}
+
+const bulkPaymentPreview = computed(() => {
+  const dues = totalCustomerUnpaidDues.value
+  const amt = bulkPaymentForm.value.amount || 0
+  if (amt <= 0) {
+    return {
+      title: 'معاينة التوزيع',
+      message: 'أدخل مبلغاً لمعاينة تسوية الفواتير وحركة الرصيد.',
+      icon: 'pi pi-info-circle',
+      boxClass: 'surface-ground text-color-secondary',
+    }
+  }
+  if (amt <= dues) {
+    return {
+      title: 'تسوية فواتير البيع بالكامل حتى المبلغ المدفوع',
+      message: `سيتم استخدام كامل المبلغ (${formatMoney(amt)}) لسداد الفواتير غير المسددة من الأقدم إلى الأحدث. المتبقي بعد الدفع: ${formatMoney(dues - amt)}.`,
+      icon: 'pi pi-check-circle',
+      boxClass: 'bg-green-50 text-green-800 border-1 border-green-200',
+    }
+  }
+  const residual = amt - dues
+  return {
+    title: 'تسوية جميع الفواتير + إيداع الفائض برصيد العميل',
+    message: `سيتم سداد جميع الفواتير غير المسددة بالكامل (${formatMoney(dues)})، وإضافة المبلغ الفائض (${formatMoney(residual)}) إلى رصيد العميل كدفعة مقدمة / رصيد دائن.`,
+    icon: 'pi pi-wallet',
+    boxClass: 'bg-blue-50 text-blue-800 border-1 border-blue-200',
+  }
+})
+
+function openBulkPaymentDialog() {
+  bulkPaymentForm.value = {
+    amount: totalCustomerUnpaidDues.value > 0 ? totalCustomerUnpaidDues.value : 0,
+    date: formatDateLocal(new Date()),
+    financial_account_id: accountOptions.value[0]?.value ?? null,
+    description: '',
+  }
+  bulkPaymentDialogVisible.value = true
+}
+
+function setBulkPaymentDate(v: Date | Date[] | (Date | null)[] | null | undefined) {
+  const raw = Array.isArray(v) ? v[0] : v
+  const d = raw instanceof Date ? raw : new Date()
+  bulkPaymentForm.value.date = formatDateLocal(d)
+}
+
+async function onBulkPaymentSubmit() {
+  if (!customer.value) return
+  if (bulkPaymentForm.value.amount <= 0) {
+    showError('يرجى إدخال مبلغ صحيح أكبر من الصفر')
+    return
+  }
+  if (!bulkPaymentForm.value.financial_account_id) {
+    showError('يرجى اختيار الحساب المالي')
+    return
+  }
+  bulkPaymentSubmitting.value = true
+  try {
+    await store.bulkPayment(customer.value.id, {
+      amount: bulkPaymentForm.value.amount,
+      financial_account_id: bulkPaymentForm.value.financial_account_id,
+      date: bulkPaymentForm.value.date,
+      description: bulkPaymentForm.value.description || undefined,
+    })
+    showSuccess('تم سداد الفواتير وإجراء التسوية بنجاح')
+    bulkPaymentDialogVisible.value = false
+    await refetchCustomer()
+    if (balanceHistoryDialogVisible.value) {
+      await loadBalanceHistory(balanceTxMeta.value?.current_page ?? 1)
+    }
+  } catch {
+    // handled by store/watch
+  } finally {
+    bulkPaymentSubmitting.value = false
+  }
+}
+
+const bulkDiscountAllocationPreview = computed(() => {
+  const list = unpaidAndPartialInvoices.value
+  const totalDues = totalCustomerUnpaidDues.value
+  const discountAmt = Math.min(bulkDiscountForm.value.amount || 0, totalDues)
+  const method = bulkDiscountForm.value.distribution_method
+
+  if (list.length === 0 || discountAmt <= 0) {
+    return list.map((inv) => {
+      const rem = Math.max(0, inv.total_amount - inv.paid_amount)
+      return {
+        id: inv.id,
+        invoice_number: inv.invoice_number,
+        invoice_date: inv.invoice_date,
+        remaining_before: rem,
+        allocated_discount: 0,
+        remaining_after: rem,
+      }
+    })
+  }
+
+  const allocatedMap: Record<number, number> = {}
+
+  if (method === 'oldest_first') {
+    let remainingToDistribute = discountAmt
+    const sorted = [...list].sort(
+      (a, b) => (a.invoice_date || '').localeCompare(b.invoice_date || '') || a.id - b.id,
+    )
+    for (const inv of sorted) {
+      const rem = Math.max(0, inv.total_amount - inv.paid_amount)
+      const d = Math.min(rem, remainingToDistribute)
+      allocatedMap[inv.id] = Math.round(d * 100) / 100
+      remainingToDistribute = Math.round((remainingToDistribute - d) * 100) / 100
+    }
+  } else {
+    // Proportional
+    let allocatedSum = 0
+    const count = list.length
+    for (let i = 0; i < count; i++) {
+      const inv = list[i]
+      if (!inv) continue
+      const rem = Math.max(0, inv.total_amount - inv.paid_amount)
+      let d = 0
+      if (totalDues > 0) {
+        const ratio = rem / totalDues
+        if (i === count - 1) {
+          d = Math.min(rem, Math.round((discountAmt - allocatedSum) * 100) / 100)
+        } else {
+          d = Math.min(rem, Math.round(discountAmt * ratio * 100) / 100)
+        }
+      }
+      d = Math.max(0, d)
+      allocatedMap[inv.id] = d
+      allocatedSum = Math.round((allocatedSum + d) * 100) / 100
+    }
+
+    let discrepancy = Math.round((discountAmt - allocatedSum) * 100) / 100
+    if (Math.abs(discrepancy) > 0.0001) {
+      for (const inv of list) {
+        if (discrepancy <= 0) break
+        const rem = Math.max(0, inv.total_amount - inv.paid_amount)
+        const room = Math.round((rem - (allocatedMap[inv.id] || 0)) * 100) / 100
+        if (room > 0.0001) {
+          const add = Math.min(room, discrepancy)
+          allocatedMap[inv.id] = Math.round(((allocatedMap[inv.id] || 0) + add) * 100) / 100
+          discrepancy = Math.round((discrepancy - add) * 100) / 100
+        }
+      }
+    }
+  }
+
+  return list.map((inv) => {
+    const rem = Math.max(0, inv.total_amount - inv.paid_amount)
+    const d = allocatedMap[inv.id] || 0
+    return {
+      id: inv.id,
+      invoice_number: inv.invoice_number,
+      invoice_date: inv.invoice_date,
+      remaining_before: rem,
+      allocated_discount: d,
+      remaining_after: Math.max(0, Math.round((rem - d) * 100) / 100),
+    }
+  })
+})
+
+function openBulkDiscountDialog() {
+  bulkDiscountForm.value = {
+    amount: 0,
+    distribution_method: 'proportional',
+    description: '',
+  }
+  bulkDiscountDialogVisible.value = true
+}
+
+async function onBulkDiscountSubmit() {
+  if (!customer.value) return
+  const amt = bulkDiscountForm.value.amount
+  if (amt <= 0) {
+    showError('يرجى إدخال مبلغ خصم صحيح أكبر من الصفر')
+    return
+  }
+  if (amt > totalCustomerUnpaidDues.value) {
+    showError(`مبلغ الخصم لا يمكن أن يتجاوز إجمالي المتبقي (${formatMoney(totalCustomerUnpaidDues.value)})`)
+    return
+  }
+  bulkDiscountSubmitting.value = true
+  try {
+    await store.bulkDiscount(customer.value.id, {
+      amount: amt,
+      distribution_method: bulkDiscountForm.value.distribution_method,
+      description: bulkDiscountForm.value.description || undefined,
+    })
+    showSuccess('تم تطبيق الخصم الإجمالي بنجاح')
+    bulkDiscountDialogVisible.value = false
+    await refetchCustomer()
+  } catch {
+    // handled by store/watch
+  } finally {
+    bulkDiscountSubmitting.value = false
+  }
 }
 
 function exportToExcel() {
@@ -877,7 +1106,23 @@ onMounted(async () => {
           @click="exportToExcel"
         />
       </div>
-      <Button v-if="customer" label="إضافة فاتورة" icon="pi pi-plus" @click="openCreateInvoice" />
+      <div class="flex align-items-center gap-2">
+        <Button
+          v-if="customer"
+          label="الخصم الإجمالي"
+          icon="pi pi-percentage"
+          severity="warn"
+          @click="openBulkDiscountDialog"
+        />
+        <Button
+          v-if="customer"
+          label="الدفع الإجمالي"
+          icon="pi pi-money-bill"
+          severity="success"
+          @click="openBulkPaymentDialog"
+        />
+        <Button v-if="customer" label="إضافة فاتورة" icon="pi pi-plus" @click="openCreateInvoice" />
+      </div>
     </div>
 
     <div v-if="customer" class="flex flex-wrap gap-3 mb-4">
@@ -886,6 +1131,20 @@ onMounted(async () => {
           <div class="text-color-secondary text-sm mb-1">رصيد العميل</div>
           <div class="text-xl font-bold text-primary">{{ formatBalance(customer.balance) }}</div>
           <div class="flex flex-wrap gap-2 mt-2">
+            <Button
+              label="الدفع الإجمالي"
+              icon="pi pi-money-bill"
+              size="small"
+              severity="success"
+              @click="openBulkPaymentDialog"
+            />
+            <Button
+              label="الخصم الإجمالي"
+              icon="pi pi-percentage"
+              size="small"
+              severity="warn"
+              @click="openBulkDiscountDialog"
+            />
             <Button
               label="شحن رصيد"
               icon="pi pi-wallet"
@@ -1580,6 +1839,209 @@ onMounted(async () => {
         @submit="onPaymentFormSubmit"
         @cancel="onPaymentFormCancel"
       />
+    </Dialog>
+
+    <!-- Bulk Payment Dialog -->
+    <Dialog
+      v-model:visible="bulkPaymentDialogVisible"
+      header="الدفع الإجمالي لتسوية الفواتير"
+      :modal="true"
+      :style="{ width: '100%', maxWidth: '560px', margin: '0 20px' }"
+      @hide="bulkPaymentDialogVisible = false"
+    >
+      <div v-if="bulkPaymentDialogVisible" class="flex flex-column gap-3">
+        <!-- Summary info box -->
+        <div class="surface-ground p-3 border-round border-1 surface-border">
+          <div class="flex justify-content-between align-items-center mb-2">
+            <span class="text-color-secondary text-sm font-medium">إجمالي المتبقي على الفواتير غير المسددة:</span>
+            <span class="font-bold text-lg" :class="totalCustomerUnpaidDues > 0 ? 'text-red-600' : 'text-green-600'">
+              {{ formatAmount(totalCustomerUnpaidDues) }}
+            </span>
+          </div>
+          <div class="flex justify-content-between align-items-center text-xs text-color-secondary">
+            <span>رصيد العميل الحالي:</span>
+            <span class="font-semibold">{{ formatBalance(customer?.balance) }}</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">المبلغ المدفوع <span class="text-red-500">*</span></label>
+          <InputNumber
+            v-model="bulkPaymentForm.amount"
+            :min="0.01"
+            :min-fraction-digits="0"
+            :max-fraction-digits="2"
+            class="w-full mt-1"
+            placeholder="أدخل المبلغ الإجمالي المدفوع"
+          />
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">الحساب المالي (الخزينة / البنك المستلم) <span class="text-red-500">*</span></label>
+          <Select
+            v-model="bulkPaymentForm.financial_account_id"
+            :options="accountOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="اختر الحساب المالي المستلم"
+            class="w-full mt-1"
+          />
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">تاريخ الدفع <span class="text-red-500">*</span></label>
+          <DatePicker
+            :model-value="bulkPaymentForm.date ? new Date(bulkPaymentForm.date + 'T12:00:00') : null"
+            date-format="yy-mm-dd"
+            show-icon
+            class="w-full mt-1"
+            @update:model-value="setBulkPaymentDate"
+          />
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">البيان / ملاحظات</label>
+          <Textarea
+            v-model="bulkPaymentForm.description"
+            class="w-full mt-1"
+            rows="2"
+            placeholder="مثال: سداد نقدي إجمالي لفواتير العميل"
+          />
+        </div>
+
+        <!-- Dynamic Allocation Preview -->
+        <div v-if="bulkPaymentForm.amount > 0" class="border-round p-3 text-sm" :class="bulkPaymentPreview.boxClass">
+          <div class="flex align-items-center gap-2 font-semibold mb-1">
+            <i :class="bulkPaymentPreview.icon"></i>
+            <span>{{ bulkPaymentPreview.title }}</span>
+          </div>
+          <p class="m-0 line-height-3">
+            {{ bulkPaymentPreview.message }}
+          </p>
+        </div>
+
+        <div class="flex justify-content-end gap-2 mt-2">
+          <Button label="إلغاء" text severity="secondary" @click="bulkPaymentDialogVisible = false" />
+          <Button
+            label="تأكيد الدفع والتسوية"
+            icon="pi pi-check"
+            severity="success"
+            :loading="bulkPaymentSubmitting"
+            :disabled="bulkPaymentForm.amount <= 0 || !bulkPaymentForm.financial_account_id"
+            @click="onBulkPaymentSubmit"
+          />
+        </div>
+      </div>
+    </Dialog>
+
+    <!-- Bulk Discount Dialog -->
+    <Dialog
+      v-model:visible="bulkDiscountDialogVisible"
+      header="الخصم الإجمالي لتسوية الفواتير"
+      :modal="true"
+      :style="{ width: '100%', maxWidth: '640px', margin: '0 20px' }"
+      @hide="bulkDiscountDialogVisible = false"
+    >
+      <div v-if="bulkDiscountDialogVisible" class="flex flex-column gap-3">
+        <!-- Summary info box -->
+        <div class="surface-ground p-3 border-round border-1 surface-border">
+          <div class="flex justify-content-between align-items-center">
+            <span class="text-color-secondary text-sm font-medium">إجمالي المتبقي على الفواتير غير المسددة:</span>
+            <span class="font-bold text-lg" :class="totalCustomerUnpaidDues > 0 ? 'text-orange-600' : 'text-green-600'">
+              {{ formatAmount(totalCustomerUnpaidDues) }}
+            </span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">مبلغ الخصم الإجمالي <span class="text-red-500">*</span></label>
+          <InputNumber
+            v-model="bulkDiscountForm.amount"
+            :min="0.01"
+            :max="totalCustomerUnpaidDues"
+            :min-fraction-digits="0"
+            :max-fraction-digits="2"
+            class="w-full mt-1"
+            placeholder="أدخل مبلغ الخصم المراد توزيعه"
+          />
+          <small v-if="totalCustomerUnpaidDues > 0" class="text-color-secondary mt-1 block">
+            الحد الأقصى للخصم: {{ formatAmount(totalCustomerUnpaidDues) }}
+          </small>
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">طريقة توزيع الخصم</label>
+          <Select
+            v-model="bulkDiscountForm.distribution_method"
+            :options="distributionMethodOptions"
+            option-label="label"
+            option-value="value"
+            class="w-full mt-1"
+          />
+        </div>
+
+        <div class="field">
+          <label class="font-medium text-sm">البيان / ملاحظات</label>
+          <Textarea
+            v-model="bulkDiscountForm.description"
+            class="w-full mt-1"
+            rows="2"
+            placeholder="مثال: خصم تجاري ممنوح للعميل"
+          />
+        </div>
+
+        <!-- Real-time Distribution Preview Table -->
+        <div v-if="unpaidAndPartialInvoices.length > 0" class="flex flex-column gap-2">
+          <div class="font-semibold text-sm text-color-secondary">
+            معاينة توزيع الخصم على الفواتير:
+          </div>
+          <DataTable
+            :value="bulkDiscountAllocationPreview"
+            data-key="id"
+            size="small"
+            class="p-datatable-sm border-1 surface-border border-round overflow-hidden"
+            responsive-layout="scroll"
+          >
+            <Column field="invoice_number" header="الفاتورة" />
+            <Column field="invoice_date" header="التاريخ" />
+            <Column header="المتبقي الحالي">
+              <template #body="{ data }">
+                {{ formatAmount(data.remaining_before) }}
+              </template>
+            </Column>
+            <Column header="الخصم">
+              <template #body="{ data }">
+                <span class="font-bold text-orange-600">
+                  {{ data.allocated_discount > 0 ? `-${formatAmount(data.allocated_discount)}` : '0' }}
+                </span>
+              </template>
+            </Column>
+            <Column header="المتبقي بعد الخصم">
+              <template #body="{ data }">
+                <Tag v-if="data.remaining_after === 0 && data.allocated_discount > 0" value="مدفوعة بالكامل" severity="success" />
+                <span v-else class="font-medium" :class="data.remaining_after < data.remaining_before ? 'text-green-600' : ''">
+                  {{ formatAmount(data.remaining_after) }}
+                </span>
+              </template>
+            </Column>
+          </DataTable>
+        </div>
+        <div v-else class="text-center text-color-secondary p-3">
+          لا توجد فواتير غير مدفوعة حالياً للعميل.
+        </div>
+
+        <div class="flex justify-content-end gap-2 mt-2">
+          <Button label="إلغاء" text severity="secondary" @click="bulkDiscountDialogVisible = false" />
+          <Button
+            label="تأكيد وتطبيق الخصم"
+            icon="pi pi-check"
+            severity="warn"
+            :loading="bulkDiscountSubmitting"
+            :disabled="bulkDiscountForm.amount <= 0 || bulkDiscountForm.amount > totalCustomerUnpaidDues || totalCustomerUnpaidDues <= 0"
+            @click="onBulkDiscountSubmit"
+          />
+        </div>
+      </div>
     </Dialog>
 
     <Dialog

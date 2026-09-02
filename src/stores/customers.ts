@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { apiClient } from '@/api/axios'
 import { unwrapPayload, parsePaginatedResponse, getErrorMessage } from '@/api/utils'
-import type { Customer, CustomerBalanceTransaction, CustomerWithInvoices } from '@/types'
+import type { Customer, CustomerBalanceTransaction, CustomerWithInvoices, BulkPaymentPayload, BulkDiscountPayload } from '@/types'
 import type { PaginatedPayload } from '@/types'
 
 export const useCustomersStore = defineStore('customers', () => {
@@ -245,6 +245,44 @@ export const useCustomersStore = defineStore('customers', () => {
     return parsePaginatedResponse<CustomerBalanceTransaction>(data)
   }
 
+  async function bulkPayment(id: number, payload: BulkPaymentPayload): Promise<Customer> {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.post(`/api/customers/${id}/bulk-payment`, payload)
+      const updated = unwrapPayload<Customer>(data)
+      const idx = items.value.findIndex((c) => c.id === id)
+      if (idx !== -1) items.value[idx] = updated
+      const ai = allCustomers.value.findIndex((c) => c.id === id)
+      if (ai !== -1) allCustomers.value[ai] = updated
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل تنفيذ الدفع الإجمالي')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function bulkDiscount(id: number, payload: BulkDiscountPayload): Promise<Customer> {
+    loading.value = true
+    error.value = null
+    try {
+      const { data } = await apiClient.post(`/api/customers/${id}/bulk-discount`, payload)
+      const updated = unwrapPayload<Customer>(data)
+      const idx = items.value.findIndex((c) => c.id === id)
+      if (idx !== -1) items.value[idx] = updated
+      const ai = allCustomers.value.findIndex((c) => c.id === id)
+      if (ai !== -1) allCustomers.value[ai] = updated
+      return updated
+    } catch (e: unknown) {
+      error.value = getErrorMessage(e, 'فشل تطبيق الخصم الإجمالي')
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   function clearError() {
     error.value = null
   }
@@ -269,6 +307,8 @@ export const useCustomersStore = defineStore('customers', () => {
     chargeBalance,
     withdrawBalance,
     setInitialBalance,
+    bulkPayment,
+    bulkDiscount,
     fetchBalanceTransactions,
     clearError,
   }
